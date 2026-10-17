@@ -34,12 +34,12 @@ func _initialize() -> void:
 	for rate in [30,60,120]:
 		a = fresh()
 		for frame in rate: a.move_actor(0, Vector2i.RIGHT, 1.0/rate)
-		check(absf(a.actors[0].position.x - (1.0+1.0/0.17)) < 0.0001, "Same travel distance at %d Hz" % rate)
+		check(absf(a.actors[0].position.x - (1.0+1.0/0.23)) < 0.0001, "Same travel distance at %d Hz" % rate)
 	a = fresh()
 	a.move_actor(0, Vector2i.RIGHT, .04)
 	point = a.actors[0].position
 	a.move_actor(0, Vector2i.DOWN)
-	check(a.actors[0].position.distance_to(point) <= 1.0/60.0/.17+.0001, "Changing direction does not teleport")
+	check(a.actors[0].position.distance_to(point) <= 1.0/60.0/.23+.0001, "Changing direction does not teleport")
 	for i in 20: a.move_actor(0, Vector2i.DOWN)
 	check(absf(a.actors[0].position.x-2.0) < .0001 and a.actors[0].position.y > 1.5, "Buffered turn starts at the next tile center")
 	for obstacle in [Arena.WALL, Arena.CRATE]:
@@ -54,8 +54,8 @@ func _initialize() -> void:
 	check(absf(a.actors[0].position.x-1.0) < .001, "Occupied lane prevents entering from the previous center")
 	a = fresh()
 	a.place_bomb(0)
-	a.move_actor(0, Vector2i.RIGHT, .17)
-	a.move_actor(0, Vector2i.LEFT, .17)
+	a.move_actor(0, Vector2i.RIGHT, .23)
+	a.move_actor(0, Vector2i.LEFT, .23)
 	check(absf(a.actors[0].position.x-2.0) < .001, "Bomb pass-through expires after the body leaves")
 	a = fresh()
 	put(a, 0, Vector2(2.2,1))
@@ -63,12 +63,12 @@ func _initialize() -> void:
 	check(a.bombs[0].cell == Vector2i(2,1), "Mid-tile bomb placement uses the nearest tile")
 	a = fresh()
 	a.flames[Vector2i(2,1)] = .5
-	a.move_actor(0, Vector2i.RIGHT, .17)
+	a.move_actor(0, Vector2i.RIGHT, .23)
 	check(not a.actors[0].alive and a.actors[0].position.x < 1.5, "Blast hits the body before its center enters a burning tile")
 	a = fresh()
 	a.actors[0].shield = true
 	a.flames[Vector2i(2,1)] = .5
-	a.move_actor(0, Vector2i.RIGHT, .17)
+	a.move_actor(0, Vector2i.RIGHT, .23)
 	check(a.actors[0].alive and not a.actors[0].shield, "Shield protects continuous entry into fire")
 	a = fresh()
 	put(a, 1, Vector2(5,5))

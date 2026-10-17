@@ -34,18 +34,18 @@ func run() -> void:
 		var direction: Vector2 = game._pad_direction(center + expected * 80)
 		check(direction.is_equal_approx(expected), "Proportional joystick angle at %d o'clock" % hour)
 		var arena := fresh()
-		arena.move_actor(0,direction,.17)
+		arena.move_actor(0,direction,.23)
 		var moved: Vector2 = arena.actors[0].position - Vector2(6,5)
 		var lane := Vector2(signf(expected.x),0) if absf(expected.x) > absf(expected.y) else Vector2(0,signf(expected.y))
 		check(moved.distance_to(lane) < .0001, "Clock angle selects a centered lane at %d o'clock" % hour)
 		check(absf(moved.length()-1) < .0001, "Diagonal speed stays within one movement budget")
 	check(game._pad_direction(center+Vector2(5,5)) == Vector2.ZERO, "Joystick center remains a dead zone")
 	var a := fresh()
-	a.move_actor(0,Vector2(1,1),.17)
+	a.move_actor(0,Vector2(1,1),.23)
 	check(absf(a.actors[0].position.distance_to(Vector2(6,5))-1) < .0001, "Unnormalized inputs cannot increase speed")
 	a = fresh()
 	for y in range(1,10): a.grid[y][7] = Arena.WALL
-	a.move_actor(0,Vector2(.6,.8),.34)
+	a.move_actor(0,Vector2(.6,.8),.46)
 	check(a.actors[0].position.is_equal_approx(Vector2(6,7)), "Steering remains centered alongside walls")
 	a = fresh()
 	a.grid[5][7] = Arena.WALL
@@ -59,7 +59,7 @@ func run() -> void:
 	a.actors[0].position = Vector2(6,5)
 	a.actors[0].cell = Vector2i(6,5)
 	a.actors[0].kick = true
-	a.move_actor(0,Vector2(.8660254,.5),.17)
+	a.move_actor(0,Vector2(.8660254,.5),.23)
 	check(a.bombs[0].direction == Vector2i.RIGHT and a.bombs[0].cell == Vector2i(8,5), "Diagonal steering kicks bombs along the contacted axis")
 
 	var pulses: Array = []

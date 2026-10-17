@@ -96,17 +96,17 @@ func _initialize() -> void:
 	put(a, 0, Vector2i(2,3))
 	a.grid[5][3] = Arena.WALL
 	a.grid[5][5] = Arena.WALL
-	for frame in 150:
+	for frame in ceili((Arena.FUSE + 0.1) * 60):
 		a.tick(1.0/60.0)
 	check(a.bombs.is_empty(), "Bomb trapped between obstacles still explodes")
 	a.start(42,0)
 	check(not a.actors[0].kick, "New round clears kick ability")
-	check(a.actors[1].move_time == 0.42 and a.actors[0].move_time == 0.17, "Relaxed bots move slower without slowing human")
+	check(a.actors[1].move_time == 0.57 and a.actors[0].move_time == 0.23, "Relaxed bots move slower relative to human movement")
 	a.place_bomb(1)
 	put(a, 1, Vector2i(1,3))
-	a.tick(2.5)
+	a.tick(Arena.FUSE + 0.1)
 	check(a.actors[1].bombs == 0 and not a.place_bomb(1), "Relaxed AI waits between bomb placements")
-	a.tick(1.6)
+	a.tick(2.2)
 	check(a.place_bomb(1), "Relaxed AI can bomb when cooldown expires")
 	print("AtomicTux kick/difficulty: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)

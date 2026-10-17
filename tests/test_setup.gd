@@ -34,7 +34,7 @@ func run() -> void:
 	game.enabled_powerups = ["shield"]
 	game._start_match()
 	check(game.arena.actors.size() == 2, "One opponent creates two contestants")
-	check(game.arena.actors[1].move_time == 0.42, "Relaxed opponent uses slower movement")
+	check(game.arena.actors[1].move_time == 0.57, "Relaxed opponent uses slower movement")
 	check(game.arena.enabled_powerups == ["shield"], "Solo passes chosen drops to simulation")
 	game.countdown = 0
 	game._process(0.1)

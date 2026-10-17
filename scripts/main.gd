@@ -17,7 +17,8 @@ const ICONS := {
 	"fire": preload("res://assets/icons/fire.svg"),
 	"speed": preload("res://assets/icons/speed.svg"),
 	"kick": preload("res://assets/icons/kick.svg"),
-	"shield": preload("res://assets/icons/shield.svg")
+	"shield": preload("res://assets/icons/shield.svg"),
+	"atomic": preload("res://assets/icons/atomic.svg")
 }
 const DEATH_DURATION := 2.0
 const CELL := 52.0
@@ -374,7 +375,7 @@ func _make_buttons() -> void:
 		_button(Rect2(80, 290, 510, 66), "STRENGTH: " + ["RELAXED", "NORMAL", "FIERCE"][level], _cycle_level)
 		for i in Arena.POWER_UPS.size():
 			var kind: String = Arena.POWER_UPS[i]
-			_button(Rect2(1050, 195 + i * 82, 150, 58), "ON" if enabled_powerups.has(kind) else "OFF", _toggle_powerup.bind(kind), enabled_powerups.has(kind))
+			_button(Rect2(1050, 185 + i * 74, 150, 58), "ON" if enabled_powerups.has(kind) else "OFF", _toggle_powerup.bind(kind), enabled_powerups.has(kind))
 		_button(Rect2(80, 650, 350, 64), "START GAME   →", _start_match, true)
 		_button(Rect2(450, 650, 200, 64), "BACK", _menu)
 	elif mode == "playing":
@@ -451,10 +452,10 @@ func _draw_setup() -> void:
 	_text(Vector2(80, 510), "Power-ups appear inside destroyed crates.", 19, MUTED)
 	_text(Vector2(80, 543), "Switch them all off for a classic bomb duel.", 19, MUTED)
 	_text(Vector2(690, 155), "AVAILABLE POWER-UPS", 17, TEAL)
-	var titles := ["Extra bomb", "Blast range", "Speed", "Bomb kicking", "Shield"]
-	var descriptions := ["Carry one more bomb", "Reach farther with each blast", "Move faster through the arena", "Push bombs; they bounce off walls", "Survive one bomb blast"]
+	var titles := ["Extra bomb", "Blast range", "Speed", "Bomb kicking", "Shield", "Atomic bomb"]
+	var descriptions := ["Carry one more bomb", "Reach farther with each blast", "Move faster through the arena", "Push bombs; they bounce off walls", "Survive one bomb blast", "Next bomb blasts a full cross"]
 	for i in Arena.POWER_UPS.size():
-		var y := 195.0 + i * 82
+		var y := 185.0 + i * 74
 		draw_texture_rect(ICONS[Arena.POWER_UPS[i]], Rect2(690, y + 5, 48, 48), false)
 		_text(Vector2(753, y + 24), titles[i], 23, WHITE)
 		_text(Vector2(753, y + 49), descriptions[i], 15, MUTED)
@@ -486,9 +487,9 @@ func _draw_match() -> void:
 	draw_set_transform(Vector2(layout_extra.x, 0))
 	_text(Vector2(1010, 162), "TUX LOADOUT" if demo else "YOUR LOADOUT", 14, MUTED)
 	var player: Dictionary = arena.actors[local_actor_id]
-	_stat(191, "BOMBS", "%d / %d" % [player.capacity - player.bombs, player.capacity], TEAL, "bomb")
+	_stat(191, "ATOMIC READY" if player.get("atomic", false) else "BOMBS", "%d / %d" % [player.capacity - player.bombs, player.capacity], GOLD if player.get("atomic", false) else TEAL, "atomic" if player.get("atomic", false) else "bomb")
 	_stat(274, "BLAST RANGE", "%d TILES" % player.power, GOLD, "fire")
-	_stat(357, "SPEED", "%d%%" % roundi(0.17 / player.move_time * 100), Color("b09aff"), "speed")
+	_stat(357, "SPEED", "%d%%" % roundi(0.23 / player.move_time * 100), Color("b09aff"), "speed")
 	_panel(Rect2(1010,440,108,35),PANEL,LINE,8)
 	draw_texture_rect(ICONS.kick,Rect2(1014,443,29,29),false)
 	_text(Vector2(1048,463),"KICK ON" if player.kick else "KICK OFF",11,Color("83caff") if player.kick else MUTED)
@@ -540,6 +541,8 @@ func _draw_board() -> void:
 			for trail in range(1,4):
 				draw_circle(bomb_center-Vector2(bomb.direction)*trail*9,5-trail,Color(0.51,0.79,1.0,0.7-trail*0.15))
 		_draw_bomb(bomb_center, 17, bomb.fuse)
+		if bomb.power == Arena.ATOMIC_POWER:
+			draw_texture_rect(ICONS.atomic, Rect2(bomb_center - Vector2(12,12), Vector2(24,24)), false)
 	for cell in arena.flames:
 		var center: Vector2 = BOARD + Vector2(cell)*CELL + Vector2(26,26)+offset
 		var strength: float = arena.flames[cell] / Arena.FIRE_TIME
@@ -665,7 +668,7 @@ func _on_exploded(cells: Array) -> void:
 
 func _on_collected(id: int, kind: String) -> void:
 	if id == local_actor_id:
-		flash = {"bomb":"EXTRA BOMB", "fire":"BLAST RANGE UP", "speed":"SPEED UP", "kick":"BOMB KICK — WALK INTO A BOMB", "shield":"SHIELD READY — ONE HIT PROTECTED"}[kind]
+		flash = {"atomic":"ATOMIC READY — NEXT BOMB BLASTS THE FULL CROSS", "bomb":"EXTRA BOMB", "fire":"BLAST RANGE UP", "speed":"SPEED UP", "kick":"BOMB KICK — WALK INTO A BOMB", "shield":"SHIELD READY — ONE HIT PROTECTED"}[kind]
 		flash_time = 2.0
 		sound.play_effect("pickup")
 
@@ -683,7 +686,9 @@ func _load_settings() -> void:
 		best = int(config.get_value("game","wins",0))
 		opponents = clampi(int(config.get_value("solo", "opponents", 3)), 1, 3)
 		var saved = config.get_value("solo", "powerups", Arena.POWER_UPS)
-		if saved is Array: enabled_powerups = Arena.POWER_UPS.filter(func(kind): return saved.has(kind))
+		if saved is Array:
+			enabled_powerups = Arena.POWER_UPS.filter(func(kind): return saved.has(kind))
+			if not config.has_section_key("solo", "atomic_available") and not enabled_powerups.is_empty(): enabled_powerups.append("atomic")
 	sound.enabled = not muted
 
 func _save_settings() -> void:
@@ -691,6 +696,7 @@ func _save_settings() -> void:
 	config.set_value("game","difficulty",level)
 	config.set_value("game","muted",muted)
 	config.set_value("game","wins",best)
+	config.set_value("solo", "atomic_available", true)
 	config.set_value("solo", "opponents", opponents)
 	config.set_value("solo", "powerups", enabled_powerups)
 	config.save("user://settings.cfg")

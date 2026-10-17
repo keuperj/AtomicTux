@@ -57,7 +57,7 @@ func _initialize() -> void:
 	check(not cells.has(Vector2i(1,3)), "Wall stops blast")
 	a.place_bomb(0)
 	put(a, 0, Vector2i(6,5))
-	a.tick(2.41)
+	a.tick(Arena.FUSE + 0.01)
 	check(a.grid[1][3] == Arena.EMPTY, "Crate destroyed")
 	check(a.actors[0].bombs == 0, "Capacity returned on explosion")
 	check(a.flames.has(Vector2i(1,1)), "Explosion creates lethal flames")
@@ -98,7 +98,7 @@ func _initialize() -> void:
 	a.grid[5][6] = Arena.CRATE
 	Bot.step(a,1)
 	check(a.bombs.size() == 1, "Bot plants against crate with escape")
-	for i in 160:
+	for i in ceili((Arena.FUSE + 0.2) * 60):
 		a.tick(1.0/60.0)
 		Bot.step(a,1)
 	check(a.actors[1].alive, "Bot escapes own bomb")

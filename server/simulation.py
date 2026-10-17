@@ -4,8 +4,10 @@ import math
 from collections import deque
 
 DIRS = ((0, -1), (1, 0), (0, 1), (-1, 0))
-POWER_UPS = ("bomb", "fire", "speed", "kick", "shield")
-FUSE, FIRE_TIME, KICK_STEP, SHIELD_GRACE = 2.4, .65, .065, .75
+POWER_UPS = ("bomb", "fire", "speed", "kick", "shield", "atomic")
+DROP_WEIGHTS = (10, 3, 1, 3, 3, 2)
+ATOMIC_POWER = -1
+FUSE, FIRE_TIME, KICK_STEP, SHIELD_GRACE = 3.2, .65, .09, .75
 ACTOR_RADIUS, BOMB_RADIUS, MOTION_STEP = .28, .30, .04
 
 def overlaps(a, b, distance):
@@ -38,8 +40,8 @@ class Match:
             self.grid.append(row)
         self.actors = [dict(id=i, name=players.get(i, ("TUX", "EMBER", "BYTE", "NOVA")[i]),
                             cell=c, previous=c, position=tuple(float(v) for v in c), goal=None, alive=True, cooldown=0.,
-                            move_time=.17 if i in players else (.42, .21, .17)[difficulty],
-                            capacity=1, power=2, bombs=0, kick=False, shield=False,
+                            move_time=.23 if i in players else (.57, .28, .23)[difficulty],
+                            capacity=1, power=2, bombs=0, kick=False, shield=False, atomic=False,
                             invulnerable=0., bomb_cooldown=0., facing=(0, 1))
                        for i, c in enumerate(spawns)]
 
@@ -74,8 +76,9 @@ class Match:
         if a['cell'] in self.pickups:
             kind = self.pickups.pop(a['cell'])
             if kind == 'bomb': a['capacity'] = min(5, a['capacity']+1)
+            elif kind == 'atomic': a['atomic'] = True
             elif kind == 'fire': a['power'] = min(7, a['power']+1)
-            elif kind == 'speed': a['move_time'] = max(.105, a['move_time']-.025)
+            elif kind == 'speed': a['move_time'] = max(.15, a['move_time']-.025)
             else: a[kind] = True
             self.events.append(dict(type='pickup', actor=a['id'], kind=kind))
 
@@ -168,15 +171,19 @@ class Match:
         a = self.actors[actor_id]
         if self.finished or not a['alive'] or a['bomb_cooldown'] > 0 or a['bombs'] >= a['capacity'] or self.bomb_at(a['cell']):
             return False
-        self.bombs.append(dict(cell=a['cell'], owner=actor_id, power=a['power'], fuse=FUSE,
+        self.bombs.append(dict(cell=a['cell'], owner=actor_id, power=ATOMIC_POWER if a['atomic'] else a['power'], fuse=FUSE,
                                direction=(0, 0), motion_time=0.,
                                passers=[o["id"] for o in self.actors if o["alive"] and overlaps(o["position"], a["cell"], ACTOR_RADIUS+BOMB_RADIUS)]))
+        a['atomic'] = False
         a['bombs'] += 1
-        a['bomb_cooldown'] = 4. if actor_id not in self.humans and self.difficulty == 0 else 0.
+        a['bomb_cooldown'] = 5.4 if actor_id not in self.humans and self.difficulty == 0 else 0.
         return True
 
     def blast(self, cell, power):
         result = [cell]
+        if power == ATOMIC_POWER:
+            cross = [(x, cell[1]) for x in range(1, 12)] + [(cell[0], y) for y in range(1, 10)]
+            return result + [c for c in cross if c != cell and self.tile(c) != 1]
         for d in DIRS:
             for n in range(1, power+1):
                 c = add(cell, d, n)
@@ -230,7 +237,7 @@ class Match:
                 self.pickups.pop(c, None)
                 if self.tile(c) == 2:
                     self.grid[c[1]][c[0]] = 0
-                    if self.rng.random() < .38: self.pickups[c] = self.rng.choice(POWER_UPS)
+                    if self.rng.random() < .38: self.pickups[c] = self.rng.choices(POWER_UPS, weights=DROP_WEIGHTS, k=1)[0]
             self.events.append(dict(type='explosion', cells=cells))
         self.update_passers()
         for a in self.actors:
@@ -291,7 +298,7 @@ class Match:
         if origin in danger:
             path = self.route(actor_id, danger, True)
         else:
-            cells = self.blast(origin, a['power'])
+            cells = self.blast(origin, ATOMIC_POWER if a['atomic'] else a['power'])
             useful = any(self.tile(c) == 2 for c in cells) or any(
                 o['alive'] and o['id'] != actor_id and o['cell'] in cells for o in self.actors)
             if useful and a['bombs'] < a['capacity'] and a['bomb_cooldown'] <= 0:

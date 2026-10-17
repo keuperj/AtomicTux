@@ -18,7 +18,7 @@ static func step(arena: TuxArena, id: int, delta: float = 1.0 / 60.0) -> void:
 			_follow(arena, id, delta)
 		return
 	var useful := false
-	for cell in arena.blast_cells(origin, actor.power):
+	for cell in arena.blast_cells(origin, TuxArena.ATOMIC_POWER if actor.atomic else actor.power):
 		if arena.tile(cell) == TuxArena.CRATE:
 			useful = true
 		for other in arena.actors:
@@ -26,7 +26,7 @@ static func step(arena: TuxArena, id: int, delta: float = 1.0 / 60.0) -> void:
 				useful = true
 	if useful and actor.bombs < actor.capacity and actor.bomb_cooldown <= 0.0:
 		var hypothetical := danger.duplicate()
-		for cell in arena.blast_cells(origin, actor.power):
+		for cell in arena.blast_cells(origin, TuxArena.ATOMIC_POWER if actor.atomic else actor.power):
 			hypothetical[cell] = minf(float(hypothetical.get(cell, 99.0)), TuxArena.FUSE)
 		var escape := route(arena, id, hypothetical, true)
 		if not escape.is_empty():

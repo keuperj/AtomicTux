@@ -1,225 +1,69 @@
 # AtomicTux
 
-Little penguins. Big chain reactions.
+**Little penguins. Big chain reactions.**
 
-An open-source, single-player and online multiplayer bomb arena game built with **Godot 4.6**, designed
-for landscape Android phones and also playable on desktop. Inspired by classic
-Bomberman gameplay, with original code, generated Tux-inspired artwork, and a
-teal-and-copper arena. Released under the MIT license.
+![AtomicTux title screen with its Tux-inspired mascot and three game modes](docs/screenshots/landing.png)
 
-## Play
+Drop a bomb. Slip around a corner. Watch the arena change.
+**AtomicTux** brings classic Bomberman-style battles to Android phones, tablets,
+and desktop—with little Linux-inspired penguins, destructible crates, and
+one very good reason to keep moving.
 
-Godot 4.6 for Linux x86_64 is installed locally in `tools/godot/`.
-Run `./godot.sh` to open this project in the editor, or `./godot.sh --game`
-to play directly. The launcher also accepts Godot CLI options, such as
-`./godot.sh --headless --script tests/test_arena.gd`. The binary is excluded
-from Git and Godot's resource scan; fresh checkouts need their own engine installation.
+**[Install & play](docs/INSTALL.md)** · **[Host a multiplayer server](docs/MULTIPLAYER.md)** · **[Development guide](docs/DEVELOPMENT.md)**
 
-1. Install [Godot 4.6](https://godotengine.org/download/archive/4.6-stable/) (standard edition; no .NET needed).
-2. Import `project.godot` and press **F6** with `scenes/main.tscn` open, or **F5**.
-3. Select **Single Player**, choose **1–3 opponents**, their shared strength
-   (**Relaxed / Normal / Fierce**), and the available power-ups. Press **Start Game**.
-   Your setup is saved between launches.
+## Small penguins. Plenty of ways to play.
 
-The landing page also offers **Multi Player** (the existing online lobby) and
-**Demo**: four AI penguins competing in a free-for-all with all five power-ups
-available as crate drops. Demo uses Normal strength, ignores movement/bomb input,
-and does not affect your win record. Pause to exit, or replay after the result.
+- **Make it your match.** Face one to three AI opponents, choose Relaxed, Normal,
+  or Fierce strength, and pick which power-ups can appear.
+- **Bring your friends.** Create or join online rooms for up to four players.
+  Start when you're ready; bots fill the spare seats. Stay for a rematch.
+- **Watch the chaos.** Demo mode pits four AI penguins against each other with
+  every power-up available.
+- **Keep your thumbs in the action.** Smooth movement, a large right-hand
+  joystick, a left-hand bomb button, and a layout that adapts to phones and tablets.
+- **Feel the close calls.** Nearby explosions trigger vibration on supported
+  devices, backed by low rumbles and soft impact sounds.
 
-Solo power-up toggles cover extra bombs, blast range, speed, bomb kicking, and
-a one-hit shield. Disabled types never drop; turning all off disables drops.
-These options apply to solo games; online rooms retain their server rules.
+![A live arena battle with four penguins, exploding bombs, crates, and touch controls](docs/screenshots/arena.png)
 
-Command line: `godot --path .`
+*Break a route through the crates. Collect an advantage. Be the last Tux standing.*
 
-| Action | Desktop | Android |
-| --- | --- | --- |
-| Move | WASD / arrow keys | Right joystick: hold and slide |
-| Plant bomb | Space | Left gold button |
-| Pause | Escape / P | Pause button / Android Back |
+## Six power-ups. One more reason to risk it.
 
-Touch the right joystick, then keep your finger down and slide to steer. Movement
-continues while held, even when your finger slides beyond the ring. Return to the
-center to stop temporarily or lift to release. The joystick accepts every clock
-angle: 12 o'clock requests up, 3 requests right, and intermediate angles prefer
-the stronger component. If that lane is blocked, the other requested direction
-is tried. Keyboard directions can also be combined. Another finger can drop
-bombs with the left button simultaneously.
-
-All contestants move smoothly along grid center lines, including AI and online
-players. Tux stays centered across each corridor, turns only at tile centers,
-and stops at the center of the last clear tile before a wall or crate. A turn
-requested between centers is buffered until the next center; reversing along
-the current lane responds immediately. Releasing the joystick stops along the
-center line. Diagonal input never cuts corners or increases the speed budget.
-Bombs occupy the nearest tile, and body collisions still apply to bombs, other
-players, and flames. Online animation follows the same centered corner paths.
-The joystick has a larger ring and touch area for small phone screens.
-The game pauses when backgrounded and clears held touches.
-
-Nearby explosions trigger a short vibration on supported phones and tablets.
-Feedback scales with distance to the nearest blast tile (within three tiles),
-with stronger pulses for closer blasts. Chain reactions are rate limited;
-backgrounded games and spectators do not vibrate. Android exports include the
-VIBRATE permission. Unsupported devices simply play without haptic feedback.
-
-The landscape layout fills phone and tablet aspect ratios without stretching
-the artwork. The arena scales to the available space, controls anchor near the
-screen edges, and Android safe-area insets keep them clear of cutouts. Both
-landscape orientations are supported.
-
-Sound effects use cached variations of muted impacts, low explosion rumble,
-glass-like pickups, and a soft shield impact. Effects overlap without cutting
-each other off; rapid chain explosions are limited to avoid excessive loudness.
-Difficulty, sound preference, and lifetime wins are saved in Godot's `user://` directory.
-
-## Rules
-
-- One human versus three bots; survive to be the last penguin standing.
-- Bombs explode after **2.4 seconds**, with a visible fuse ring. Your own blast is lethal.
-- Cross-shaped blasts stop at solid walls and the first crate. Bombs trigger chain reactions.
-- Crates can reveal upgrades: a **bomb-plus** adds bomb capacity, a **flame** extends fire range, a **running boot** increases speed, a **boot kicking a bomb** grants Bomb Kick, and a **shield** absorbs one explosion hit.
-- **Shield:** holds one charge (extra pickups do not stack). The first fire hit consumes it and gives **0.75 seconds** of protection from lingering flames and overlapping blasts. Afterward, another hit is lethal unless you collect a new shield. The bubble and HUD show protection; all upgrades reset each round.
-- **Bomb Kick:** walk into a bomb to send it sliding at about 15 tiles/second. It bounces off walls, crates, other bombs, and contestants until its original fuse expires. Fire triggers it immediately. A kick needs a free tile beyond the bomb; the ability lasts for the round.
-- Pickups become accessible after the fire clears. Fire lasts **0.65 seconds**.
-- You may leave a bomb you just planted, but cannot walk back through it without Bomb Kick.
-- On elimination, the lethal blast stays visible for a two-second Tux death animation before the next-game dialog appears.
-- A round ends immediately on your elimination or when one survivor remains. The **2:30** timer ends unresolved rounds in a draw.
-- Relaxed bots take **0.42 seconds per tile** and wait at least **4 seconds** between bomb placements. Normal and Fierce take **0.21 / 0.17 seconds per tile**. Movement is continuous at every difficulty; all bots use the same routing and escape logic.
-
-## Android export
-
-An `Android` export preset is included with landscape orientation, the Compatibility
-renderer, immersive display, and Internet permission for multiplayer.
-
-### Local Linux installation
-
-On Linux x86_64, install `curl`, `unzip`, and `tar` with your package manager,
-then run from the project directory (the local Godot 4.6 engine must already
-be installed as described above):
-
-```sh
-./scripts/setup-android.sh
-```
-
-The script downloads Java 17, Android command-line tools, Platform Tools,
-Build Tools **35.0.1**, Platform **35**, and Godot 4.6 Android export templates.
-Read and accept the Android SDK licenses when prompted. Internet access is
-required; completed downloads and installed tools are reused on subsequent runs.
-No root access or Android Studio is needed. This setup uses the existing
-non-Gradle APK preset; NDK and CMake are unnecessary for that workflow.
-See [Godot's Android setup reference](https://docs.godotengine.org/en/4.6/tutorials/export/exporting_for_android.html)
-for other export workflows.
-
-Everything is installed inside this checkout and excluded from Git and Godot's
-resource scan:
-
-| Component | Project-relative path |
+| Power-up | Your advantage |
 | --- | --- |
-| Java SDK | `tools/jdk-17` |
-| Android SDK | `tools/android-sdk` |
-| Android export templates | `tools/godot-data/godot/export_templates/4.6.stable` |
-| Godot editor settings and debug keystore | `tools/config` |
-| Download cache | `tools/downloads` |
+| **Extra bomb** | Plant more bombs at once. The most common pickup. |
+| **Blast range** | Reach farther down the corridors. |
+| **Speed** | Get a little more distance between you and the fuse. |
+| **Bomb kicking** | Send bombs sliding and bouncing through the arena. |
+| **Shield** | Survive one blast. Make that second chance count. |
+| **Atomic bomb** | Arm your next bomb with a blast across its entire row and column—even through obstacles. |
 
-The installer sets Godot's **Export → Android → Java SDK Path**, **Android SDK
-Path**, and **Debug Keystore** automatically. The launcher also supplies debug
-signing credentials to the export preset. Always open this installation with
-`./godot.sh`: the launcher sets the local Java/Android environment and isolates
-Godot's configuration and data from other projects. Game preferences and saved
-server trust used through this launcher also live under `tools/godot-data`;
-previous global preferences are not migrated. Close an already-open editor and
-reopen it through the launcher after setup. If you move the checkout, rerun the
-setup script to refresh its absolute paths.
+Your own bombs are dangerous too. Ordinary blasts stop at walls and crates;
+atomic blasts pass through them while permanent walls stay intact.
 
-For this checkout the SDK paths are:
+![Single-player setup with opponent count, difficulty, and six individual power-up switches](docs/screenshots/single-player.png)
 
-```text
-/home/keuper/Projekte/AtomicTux/tools/jdk-17
-/home/keuper/Projekte/AtomicTux/tools/android-sdk
-```
+*Tune your next round, from a simple duel to a fully powered four-penguin battle.*
 
-### Build and install on a phone
+## Ready to play?
 
-Choose **Project → Export → Android → Export Project** with **Export With Debug**
-enabled, or run:
+Follow the **[installation guide](docs/INSTALL.md)** to install an Android APK,
+build your own, or run the game on desktop. On desktop, use **WASD / arrow keys**
+to move, **Space** to plant a bomb, and **Esc** to pause.
 
-```sh
-mkdir -p builds
-./godot.sh --headless --editor --quit
-./godot.sh --headless --export-debug Android builds/AtomicTux.apk
-```
+For online play, choose **Multi Player**, enter your name, and connect to the
+default server at **92.205.18.100:8081** or a server of your own. First-time
+connections ask you to verify the server's certificate fingerprint.
 
-Copy `builds/AtomicTux.apk` to the phone and open it in its file manager; allow
-installation from that file manager when Android prompts. Alternatively, enable
-USB debugging in the phone's Developer options, connect it with a data-capable
-USB cable, approve the debugging prompt, and run:
+## Open source, built with Godot
 
-```sh
-./tools/android-sdk/platform-tools/adb devices
-./tools/android-sdk/platform-tools/adb install -r builds/AtomicTux.apk
-```
+AtomicTux uses **Godot 4.6**, original game code, generated Tux-inspired artwork,
+and synthesized sound effects. It is an independent project inspired by classic
+bomb-arena games. Screenshots above are captured from the running desktop game.
 
-A debug APK has been exported and its signature verified with this local toolchain.
-Physical Android-device testing is still outstanding. Check touch sizing, safe
-areas, performance, audio, networking, and lifecycle behavior before a release.
-Keep `tools/config/debug.keystore` to install future debug builds as updates.
+Explore the **[development guide](docs/DEVELOPMENT.md)**, read the
+**[artwork notes](docs/ART.md)**, or host your own matches with the
+**[Python server](docs/MULTIPLAYER.md)**.
 
-The included preset produces a debug APK after toolchain setup. Play Store
-publishing needs a release keystore and an AAB/Gradle export configuration.
-Keystores and credentials are excluded from version control.
-
-## Development and tests
-
-```sh
-# Import resources and register script classes on a clean checkout.
-godot --headless --editor --path . --quit
-# Simulation rules, AI escape behavior, and seeded full-match tests.
-godot --headless --path . --script tests/test_arena.gd
-# Shield pickup, single-use protection, lingering flames, and reset.
-godot --headless --path . --script tests/test_shield.gd
-# Bomb kicking, bouncing, fuse behavior, and Relaxed AI pacing.
-godot --headless --path . --script tests/test_kick.gd
-# Menu, touch, pause, backgrounding, and replay integration tests.
-godot --headless --path . --script tests/test_ui.gd
-# Continuous touch input, responsive layout, and cached audio effects.
-./godot.sh --headless --script tests/test_mobile.gd
-# Fractional movement, stopping, turns, swept collisions, and AI waypoints.
-./godot.sh --headless --script tests/test_motion.gd
-# Clock-angle steering, diagonal speed/collisions, and explosion haptic requests.
-./godot.sh --headless --script tests/test_analog.gd
-# Capture desktop-rendered phone/tablet previews and WAV sound samples in builds/.
-./godot.sh --script tests/test_mobile.gd
-# Run UI tests with rendering; saves builds/menu.png and builds/arena.png.
-godot --path . --script tests/test_ui.gd
-```
-
-- `scripts/arena.gd`: seeded match state, collision, bombs, fire, upgrades, win conditions.
-- `scripts/bot.gd`: breadth-first routing, blast forecasts including chains, and escape checks before bombing.
-- `scripts/main.gd`: fixed-step game loop, presentation, input, menus, settings, and particles.
-- `scripts/sound.gd`: synthesized bomb and pickup effects.
-- `assets/art/tux.png`: generated transparent mascot used in the title and arena.
-- `docs/ART.md`: generation prompt and asset provenance.
-
-## Online multiplayer
-
-Start the Python server, then choose **Multiplayer** in the game:
-
-```sh
-python3 -m pip install -r server/requirements.txt
-python3 server/server.py --host 0.0.0.0 --port 8081
-```
-
-The default client address is **92.205.18.100:8081**; previously saved addresses
-take precedence. Enter your name, server IP, and port. On first connection, verify the certificate
-fingerprint shown in the server terminal. Browse or create a waiting game; the
-owner can start with any number of players and AI fills the remaining slots.
-After each round, stay for another round or return to the game list.
-
-The server automatically generates and reuses self-signed TLS certificates.
-See [multiplayer setup and protocol notes](docs/MULTIPLAYER.md) for installation,
-certificate trust, disconnect behavior, testing, and deployment details.
-
-Current scope: one arena theme, four contestants, single-player or server-hosted
-online rooms, five power-ups, generated penguins with procedural animation, and
-synthesized effects. Physical Android-device testing remains outstanding.
+Released under the **[MIT license](LICENSE)**.

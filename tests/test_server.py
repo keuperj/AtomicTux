@@ -26,14 +26,53 @@ class SimulationTests(unittest.TestCase):
     def test_seed_and_spawns(self):
         self.assertEqual(Match(7,{}).grid,Match(7,{}).grid)
         m = Match(8,{0:'Alice',2:'Bob'},0)
-        self.assertEqual(m.actors[2]['move_time'],.17)
-        self.assertEqual(m.actors[1]['move_time'],.42)
+        self.assertEqual(m.actors[2]['move_time'],.23)
+        self.assertEqual(m.actors[1]['move_time'],.57)
         self.assertEqual(len(m.actors),4)
         for a in m.actors: self.assertEqual(m.tile(a['cell']),0)
 
+    def test_atomic_and_weighted_drops(self):
+        from server.simulation import ATOMIC_POWER, POWER_UPS, DROP_WEIGHTS
+        m = self.fresh()
+        m.pickups[(1,1)] = 'atomic'
+        m.touch_actor(m.actors[0])
+        a = m.actors[0]
+        self.assertTrue(a['atomic'])
+        a['capacity'] = 0
+        self.assertFalse(m.place(0))
+        self.assertTrue(a['atomic'])
+        a['capacity'] = 2
+        m.grid[1][3], m.grid[1][4], m.grid[1][7] = 2, 1, 2
+        m.grid[3][1], m.grid[7][1] = 1, 2
+        self.assertTrue(m.place(0))
+        self.assertFalse(a['atomic'])
+        self.assertEqual(m.bombs[0]['power'], ATOMIC_POWER)
+        self.assertIn((11,1), m.danger())
+        self.put(m, 0, (5,5))
+        m.place(0)
+        self.assertEqual(m.bombs[1]['power'], 2)
+        self.put(m, 1, (9,1))
+        m.place(1)
+        m.actors[1]['shield'] = True
+        m.bombs[0]['fuse'] = 0
+        m.tick(.01)
+        self.assertIn((11,1), m.flames)
+        self.assertIn((1,9), m.flames)
+        self.assertNotIn((5,5), m.flames)
+        self.assertEqual(m.grid[1][7], 0)
+        self.assertEqual(m.grid[7][1], 0)
+        self.assertEqual(m.grid[1][4], 1)
+        self.assertIsNone(m.bomb_at((9,1)))
+        self.assertTrue(m.actors[1]['alive'])
+        self.assertFalse(m.actors[1]['shield'])
+        drops = m.rng.choices(POWER_UPS, weights=DROP_WEIGHTS, k=10000)
+        self.assertTrue(4000 < drops.count('bomb') < 5000)
+        self.assertTrue(300 < drops.count('speed') < 600)
+        self.assertIn('atomic', m.snapshot()['actors'][0])
+
     def test_collision_and_capacity(self):
         m=self.fresh()
-        m.move(0,(-1,0),.17)
+        m.move(0,(-1,0),.23)
         self.assertFalse(m.move(0,(-1,0)))
         self.assertFalse(m.move(0,(float("inf"),0)))
         self.assertTrue(m.place(0))
@@ -68,7 +107,7 @@ class SimulationTests(unittest.TestCase):
             m.move(0,(1,0),m.actors[0]['move_time'])
         a=m.actors[0]
         self.assertEqual((a['capacity'],a['power']),(2,3))
-        self.assertLess(a['move_time'],.17)
+        self.assertLess(a['move_time'],.23)
         self.assertTrue(a['kick'] and a['shield'])
         m.place(0)
         m.bombs[0]['fuse']=0
@@ -134,7 +173,7 @@ class SimulationTests(unittest.TestCase):
         for rate in (30,60,120):
             m=self.fresh()
             for _ in range(rate): m.move(0,(1,0),1/rate)
-            self.assertAlmostEqual(m.actors[0]['position'][0],1+1/.17,places=5)
+            self.assertAlmostEqual(m.actors[0]['position'][0],1+1/.23,places=5)
         m=self.fresh()
         m.move(0,(1,0))
         point=m.actors[0]['position']
@@ -147,7 +186,7 @@ class SimulationTests(unittest.TestCase):
         m.move(0,(1,0),.04)
         point=m.actors[0]['position']
         m.move(0,(0,1))
-        self.assertLessEqual(math.dist(point,m.actors[0]['position']),1/60/.17+.00001)
+        self.assertLessEqual(math.dist(point,m.actors[0]['position']),1/60/.23+.00001)
         for _ in range(20): m.move(0,(0,1))
         self.assertAlmostEqual(m.actors[0]['position'][0],2.)
         self.assertGreater(m.actors[0]['position'][1],1.5)
@@ -165,12 +204,12 @@ class SimulationTests(unittest.TestCase):
         self.assertAlmostEqual(m.actors[0]['position'][0],1.,places=3)
         m=self.fresh()
         m.place(0)
-        m.move(0,(1,0),.17)
-        m.move(0,(-1,0),.17)
+        m.move(0,(1,0),.23)
+        m.move(0,(-1,0),.23)
         self.assertAlmostEqual(m.actors[0]['position'][0],2.,places=3)
         m=self.fresh()
         m.flames[(2,1)]=.5
-        m.move(0,(1,0),.17)
+        m.move(0,(1,0),.23)
         self.assertFalse(m.actors[0]['alive'])
         self.assertLess(m.actors[0]['position'][0],1.5)
 
@@ -180,7 +219,7 @@ class SimulationTests(unittest.TestCase):
             self.put(m,0,(6,5))
             angle=hour*math.tau/12
             direction=(math.sin(angle),-math.cos(angle))
-            m.move(0,direction,.17)
+            m.move(0,direction,.23)
             displacement=tuple(m.actors[0]['position'][i]-(6,5)[i] for i in (0,1))
             self.assertAlmostEqual(math.hypot(*displacement),1,places=5)
             axis = 0 if abs(direction[0]) > abs(direction[1]) else 1
@@ -188,12 +227,12 @@ class SimulationTests(unittest.TestCase):
             self.assertAlmostEqual(displacement[1-axis],0,places=5)
         m=self.fresh()
         self.put(m,0,(6,5))
-        m.move(0,(1,1),.17)
+        m.move(0,(1,1),.23)
         self.assertAlmostEqual(math.dist(m.actors[0]['position'],(6,5)),1,places=5)
         m=self.fresh()
         self.put(m,0,(6,5))
         for y in range(1,10): m.grid[y][7]=1
-        m.move(0,(.6,.8),.34)
+        m.move(0,(.6,.8),.46)
         self.assertAlmostEqual(m.actors[0]['position'][0],6.,places=3)
         self.assertAlmostEqual(m.actors[0]['position'][1],7.,places=3)
         m=self.fresh()

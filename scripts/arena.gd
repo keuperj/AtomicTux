@@ -12,14 +12,16 @@ const HEIGHT := 11
 const EMPTY := 0
 const WALL := 1
 const CRATE := 2
-const FUSE := 2.4
+const FUSE := 3.2
 const FIRE_TIME := 0.65
 const SHIELD_GRACE := FIRE_TIME + 0.1
-const KICK_STEP := 0.065
+const KICK_STEP := 0.09
 const ACTOR_RADIUS := 0.28
 const BOMB_RADIUS := 0.30
 const MOTION_STEP := 0.04
-const POWER_UPS := ["bomb", "fire", "speed", "kick", "shield"]
+const POWER_UPS := ["bomb", "fire", "speed", "kick", "shield", "atomic"]
+const DROP_WEIGHTS := {"bomb": 10, "fire": 3, "speed": 1, "kick": 3, "shield": 3, "atomic": 2}
+const ATOMIC_POWER := -1
 const DIRECTIONS := [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
 var grid: Array = []
 var actors: Array = []
@@ -65,8 +67,8 @@ func start(seed_value: int, level: int = 1, opponents: int = 3, powerups: Array 
 		grid.append(row)
 	for id in (4 if ai_only else clampi(opponents, 1, 3) + 1):
 		actors.append({"id": id, "cell": spawns[id], "previous": spawns[id], "position": Vector2(spawns[id]), "goal": null, "alive": true,
-			"cooldown": 0.0, "move_time": 0.17 if id == 0 and not ai_only else [0.42, 0.21, 0.17][level],
-			"capacity": 1, "power": 2, "bombs": 0, "kick": false, "shield": false, "invulnerable": 0.0, "bomb_cooldown": 0.0, "facing": Vector2i.DOWN})
+			"cooldown": 0.0, "move_time": 0.23 if id == 0 and not ai_only else [0.57, 0.28, 0.23][level],
+			"capacity": 1, "power": 2, "bombs": 0, "kick": false, "shield": false, "atomic": false, "invulnerable": 0.0, "bomb_cooldown": 0.0, "facing": Vector2i.DOWN})
 
 func tile(cell: Vector2i) -> int:
 	if cell.x < 0 or cell.y < 0 or cell.x >= WIDTH or cell.y >= HEIGHT:
@@ -124,8 +126,9 @@ func _touch_actor(actor: Dictionary) -> void:
 		var kind: String = pickups[target]
 		match kind:
 			"bomb": actor.capacity = mini(actor.capacity + 1, 5)
+			"atomic": actor.atomic = true
 			"fire": actor.power = mini(actor.power + 1, 7)
-			"speed": actor.move_time = maxf(0.105, actor.move_time - 0.025)
+			"speed": actor.move_time = maxf(0.15, actor.move_time - 0.025)
 			"kick": actor.kick = true
 			"shield": actor.shield = true
 		pickups.erase(target)
@@ -222,11 +225,12 @@ func place_bomb(id: int) -> bool:
 	var actor: Dictionary = actors[id]
 	if finished or not actor.alive or actor.bomb_cooldown > 0.0 or actor.bombs >= actor.capacity or bomb_at(actor.cell) >= 0:
 		return false
-	bombs.append({"cell": actor.cell, "owner": id, "power": actor.power, "fuse": FUSE,
+	bombs.append({"cell": actor.cell, "owner": id, "power": ATOMIC_POWER if actor.atomic else actor.power, "fuse": FUSE,
 		"direction": Vector2i.ZERO, "motion_time": 0.0,
 		"passers": actors.filter(func(a): return a.alive and _overlaps(a.position, Vector2(actor.cell), ACTOR_RADIUS + BOMB_RADIUS)).map(func(a): return a.id)})
+	actor.atomic = false
 	actor.bombs += 1
-	actor.bomb_cooldown = 4.0 if (id > 0 or ai_only) and difficulty == 0 else 0.0
+	actor.bomb_cooldown = 5.4 if (id > 0 or ai_only) and difficulty == 0 else 0.0
 	return true
 
 func _bomb_blocked(cell: Vector2i) -> bool:
@@ -268,6 +272,14 @@ func _move_bomb(bomb: Dictionary, delta: float) -> void:
 
 func blast_cells(cell: Vector2i, power: int) -> Array:
 	var result: Array = [cell]
+	if power == ATOMIC_POWER:
+		for x in range(1, WIDTH - 1):
+			var target := Vector2i(x, cell.y)
+			if target != cell and tile(target) != WALL: result.append(target)
+		for y in range(1, HEIGHT - 1):
+			var target := Vector2i(cell.x, y)
+			if target != cell and tile(target) != WALL: result.append(target)
+		return result
 	for direction in DIRECTIONS:
 		for distance in range(1, power + 1):
 			var target: Vector2i = cell + direction * distance
@@ -353,8 +365,17 @@ func _detonate(index: int) -> void:
 		if tile(cell) == CRATE:
 			grid[cell.y][cell.x] = EMPTY
 			if rng.randf() < 0.38 and not enabled_powerups.is_empty():
-				pickups[cell] = enabled_powerups[rng.randi_range(0, enabled_powerups.size() - 1)]
+				pickups[cell] = _roll_powerup()
 	exploded.emit(cells)
+
+func _roll_powerup() -> String:
+	var total := 0
+	for kind in enabled_powerups: total += int(DROP_WEIGHTS[kind])
+	var roll := rng.randi_range(1, total)
+	for kind in enabled_powerups:
+		roll -= int(DROP_WEIGHTS[kind])
+		if roll <= 0: return kind
+	return "bomb"
 
 func _hit_by_fire(actor: Dictionary) -> void:
 	if not actor.alive or actor.invulnerable > 0.0:

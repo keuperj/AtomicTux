@@ -1,5 +1,7 @@
 # AtomicTux multiplayer
 
+[Game overview](../README.md) · [Installation](INSTALL.md) · [Development](DEVELOPMENT.md)
+
 ## Start the server
 
 The server is a standalone Python application. It needs **Python 3.10+**, **OpenSSL**
@@ -9,7 +11,7 @@ From the project folder:
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install -r server/requirements.txt
-.venv/bin/python server/server.py --host  92.205.18.100 --port 8081
+.venv/bin/python server/server.py --host 0.0.0.0 --port 8081
 ```
 
 Use `--host 127.0.0.1` for access from the same machine only. `--ip` is an alias
@@ -20,7 +22,7 @@ address/port or an appropriate VPN/port-forwarding setup.
 
 On first launch the server generates a self-signed RSA certificate and private
 key in `server/certs/`. It reuses this pair on later launches, and prints its
-SHA-256 fingerprint. Use `--cert-dir /path/to/private/directory` to choose a different
+SHA-256 fingerprint. Use `--cert-dir server/certs` to choose a different
 location. The key is created with owner-only permissions. Certificates are valid
 for ten years; an expired or incomplete pair fails startup rather than silently
 changing the server's identity. Back up the pair if you want clients to retain trust.
@@ -29,193 +31,158 @@ the whole server directory is excluded from Godot scanning and Android exports.
 
 ## Install on Linux with systemd
 
-The following example targets **Ubuntu 22.04+ or Debian 12+** with systemd and
-Python 3.10 or newer. Run it on the Linux machine that will host the server, with
-an administrator account that can use `sudo`. Godot and a desktop environment
-are not required. Other distributions need equivalent Python/venv/OpenSSL packages.
+These instructions use a **user service**, so the server runs as your Linux user
+from its existing checkout. Examples target Ubuntu or Debian with Python 3.10+
+and systemd. Run all project commands from the project root.
 
-### Install dependencies and application files
-
-Copy or clone this project onto the server and run these commands from its root
-folder (replace `/path/to/AtomicTux` with your checkout path):
+### Install dependencies
 
 ```sh
 sudo apt update
 sudo apt install python3 python3-venv python3-pip openssl ca-certificates
-python3 --version
-cd /path/to/AtomicTux
-
-# Create the service account once; skip this command if it already exists.
-sudo useradd --system --user-group --home-dir /var/lib/atomictux --no-create-home --shell /usr/sbin/nologin atomictux
-
-sudo install -d -o root -g root -m 0755 /opt/atomictux/server
-sudo install -o root -g root -m 0644 server/*.py server/requirements.txt /opt/atomictux/server/
-sudo python3 -m venv /opt/atomictux/.venv
-sudo /opt/atomictux/.venv/bin/python -m pip install -r /opt/atomictux/server/requirements.txt
+python3 -m venv .venv
+.venv/bin/python -m pip install -r server/requirements.txt
 ```
 
-Application files and the virtual environment belong to root. The service runs
-as `atomictux` and stores its certificates separately under `/var/lib/atomictux`.
-This avoids replacing the server identity when you update the application.
+### Generate the service configuration
 
-### Install and start the service
-
-The ready-to-copy unit is [server/atomictux.service](../server/atomictux.service).
-Install it as `/etc/systemd/system/atomictux.service`:
+The following command derives the service locations from the current checkout.
+It writes `builds/atomictux.service`; no username or installation directory needs
+to be edited. Keep this checkout in place while the service is installed.
 
 ```sh
-sudo install -o root -g root -m 0644 server/atomictux.service /etc/systemd/system/atomictux.service
-sudo systemd-analyze verify /etc/systemd/system/atomictux.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now atomictux.service
-sudo systemctl status atomictux.service --no-pager
-```
+mkdir -p builds
+python3 - <<'PY'
+from pathlib import Path
 
-The unit contains:
+project = Path.cwd()
+def unit_path(path):
+    value = str(path).replace('%', '%%').replace('\\', '\\\\').replace('"', '\\"')
+    return '"' + value + '"'
 
-```ini
-[Unit]
+python = unit_path(project / '.venv/bin/python').replace('$', '$$')
+(project / 'builds/atomictux.service').write_text(f'''[Unit]
 Description=AtomicTux multiplayer server
-Wants=network-online.target
-After=network-online.target
+After=network.target
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Service]
 Type=simple
-User=atomictux
-Group=atomictux
-WorkingDirectory=/opt/atomictux
+WorkingDirectory={str(project).replace('%', '%%')}
 Environment=PYTHONDONTWRITEBYTECODE=1
-ExecStart=/opt/atomictux/.venv/bin/python -u /opt/atomictux/server/server.py --host 0.0.0.0 --port 8081 --cert-dir /var/lib/atomictux/certs
+ExecStart={python} -u server/server.py --host 0.0.0.0 --port 8081 --cert-dir server/certs
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=15
 UMask=0077
-StateDirectory=atomictux
-StateDirectoryMode=0700
 NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 StandardOutput=journal
 StandardError=journal
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
+''')
+PY
+systemd-analyze --user verify builds/atomictux.service
+systemctl --user link "$PWD/builds/atomictux.service"
+systemctl --user daemon-reload
+systemctl --user enable --now atomictux.service
+systemctl --user status atomictux.service --no-pager
 ```
 
-`StateDirectory=atomictux` creates `/var/lib/atomictux` with the service user's
-ownership and keeps it writable under `ProtectSystem=strict`. The rest of the
-application stays read-only. `Restart=on-failure` restarts a failed process,
-subject to the start-rate limit. These settings follow the systemd
-[execution environment](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html)
-and [service](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html)
-documentation.
-
-On first start, the application automatically creates
-`/var/lib/atomictux/certs/server.crt` and `server.key`. Find the fingerprint in the
-journal and share it with players so they can verify their first connection:
+For startup at boot and continued operation after logout, enable lingering for
+the account that owns the service:
 
 ```sh
-sudo journalctl -u atomictux.service -n 80 --no-pager
-sudo openssl x509 -in /var/lib/atomictux/certs/server.crt -noout -fingerprint -sha256
+sudo loginctl enable-linger "$USER"
 ```
 
-OpenSSL separates fingerprint bytes with colons; the client displays the same
-hexadecimal bytes without colons. If moving an existing installation, stop the
-old server and copy **both** certificate files to this directory before the first
-service start. Set the directory owner to `atomictux:atomictux`, directory mode
-`0700`, and both files to mode `0600` with the same owner. This preserves existing
-client trust. Back up both files securely; never distribute the private key.
+This account must have permission to read the checkout and write `server/certs`.
+The service uses the `.venv` created above. It automatically generates its
+self-signed certificate and key in `server/certs` on first launch, then reuses them.
+The repository also includes `server/atomictux.service` for administrators who
+manage a system-wide deployment; the generated user service above is the
+portable checkout-based installation described here.
 
-### Configure the bind address and firewall
+### Certificates and connection settings
 
-The supplied unit listens on **all IPv4 interfaces, TCP 8081**. Clients use the
-machine's reachable address; the current client default is **92.205.18.100:8081**.
-Binding to `0.0.0.0` works even when a hosting provider maps a public address to a
-private network interface. Bind directly to `92.205.18.100` only if that address
-is actually assigned to the machine (`ip address` shows its local addresses).
-
-To change the address or port, use a systemd override:
+Find the fingerprint in the logs, or inspect the certificate:
 
 ```sh
-sudo systemctl edit atomictux.service
+journalctl --user -u atomictux.service -n 80 --no-pager
+openssl x509 -in server/certs/server.crt -noout -fingerprint -sha256
 ```
 
-For example, this override explicitly selects the existing IPv4/8081 settings;
-replace the `--host` or `--port` values as needed. The empty `ExecStart=` line is
-required to clear the original command:
+OpenSSL separates fingerprint bytes with colons; the game displays the same bytes
+without colons. Share the fingerprint with players for first-connection verification.
+Back up **both** `server/certs/server.crt` and `server/certs/server.key` securely.
+When moving an installation, stop the service and restore both files before
+starting it again. Keep the directory private to the service account and never
+share the private key.
 
-```ini
-[Service]
-ExecStart=
-ExecStart=/opt/atomictux/.venv/bin/python -u /opt/atomictux/server/server.py --host 0.0.0.0 --port 8081 --cert-dir /var/lib/atomictux/certs
-```
+The service listens on all IPv4 interfaces, TCP **8081**. The game's default
+server address remains **92.205.18.100:8081**. Players enter the reachable IP,
+not the bind address `0.0.0.0`. To use another bind address or port, edit the
+`--host` or `--port` value in `builds/atomictux.service`, then run:
 
 ```sh
-sudo systemctl daemon-reload
-sudo systemctl restart atomictux.service
-sudo ss -ltnp 'sport = :8081'
+systemd-analyze --user verify builds/atomictux.service
+systemctl --user daemon-reload
+systemctl --user restart atomictux.service
+ss -ltnp 'sport = :8081'
 ```
 
-If using UFW, allow the selected port and check its status:
+If using UFW, allow the selected port:
 
 ```sh
 sudo ufw allow 8081/tcp
 sudo ufw status
 ```
 
-Also allow TCP 8081 in your hosting provider's firewall/security group, and forward
-it through a router if applicable. These commands do not enable UFW; if enabling
-it separately on a remote host, allow your SSH port first. The service provides
-TLS itself: do not put a plain HTTP proxy in front of this port. A reverse proxy
-that terminates TLS needs a matching certificate/trust setup and WebSocket upgrade
-support; direct TLS access is the configuration described here.
+Also allow the port in your hosting provider's firewall and configure router
+forwarding if needed. These commands do not enable UFW. If enabling it separately
+on a remote host, allow your SSH port first. The server provides TLS itself;
+a reverse proxy needs matching TLS/certificate and WebSocket upgrade settings.
 
-### Operate, update, and troubleshoot
+### Operate and update
 
 ```sh
 # Follow logs; Ctrl+C stops following, not the server.
-sudo journalctl -u atomictux.service -f
-# Stop, start, or disable automatic startup.
-sudo systemctl stop atomictux.service
-sudo systemctl start atomictux.service
-sudo systemctl disable --now atomictux.service
+journalctl --user -u atomictux.service -f
+# Stop or start.
+systemctl --user stop atomictux.service
+systemctl --user start atomictux.service
+# Disable automatic startup and stop.
+systemctl --user disable --now atomictux.service
 ```
 
-To update, obtain the new project version and run the following from its root.
-Stopping or restarting ends active matches because room state is held in memory.
+To update, stop the service, update this checkout, then run:
 
 ```sh
-sudo systemctl stop atomictux.service
-sudo install -o root -g root -m 0644 server/*.py server/requirements.txt /opt/atomictux/server/
-sudo /opt/atomictux/.venv/bin/python -m pip install -r /opt/atomictux/server/requirements.txt
-sudo systemctl start atomictux.service
+.venv/bin/python -m pip install -r server/requirements.txt
+systemctl --user start atomictux.service
 ```
 
-Leave `/var/lib/atomictux/certs` intact. If the unit file itself changes, reinstall
-it and run `sudo systemctl daemon-reload` before starting. Existing overrides
-continue to apply; inspect the effective configuration with
-`sudo systemctl cat atomictux.service`.
+Keep `server/certs` intact. Restarting ends active rooms because room state is
+held in memory. If you move the checkout, stop and disable the service before
+moving it, then regenerate and relink the unit using `systemctl --user link --force`
+and enable it again. Reload the service manager whenever its unit changes.
 
-If startup fails, inspect `systemctl status` and `journalctl` first:
+If startup fails, inspect `systemctl --user status` and `journalctl --user`:
 
-- **Executable/module missing:** check `/opt/atomictux/.venv/bin/python` and install
-  dependencies into that virtual environment, not the system Python.
-- **Cannot assign requested address:** use `0.0.0.0` or an IP assigned to a local
-  interface. Clients still use the reachable public/LAN address.
-- **Address already in use:** check `ss`; stop a duplicate manually started server
-  or choose a different port in both the unit and client.
-- **Certificate errors or permission denied:** check the journal, system clock,
-  and ownership of the certificate pair. Restore a valid pair from backup rather
-  than deleting a key that clients already trust.
-- **Start request repeated too quickly:** fix the underlying error, then run
-  `sudo systemctl reset-failed atomictux.service` followed by
-  `sudo systemctl start atomictux.service`.
-- **Works locally but not remotely:** check the listening address, host/provider
-  firewall rules, router forwarding, and the IP/port entered in the client.
+- **Missing executable/module:** check `.venv/bin/python` and install requirements.
+- **Cannot assign address:** bind to `0.0.0.0` or an address assigned to the machine.
+- **Port already in use:** stop a duplicate server or change both server and client ports.
+- **Certificate errors:** check the system clock, file ownership, and certificate pair.
+  Restore a valid backup rather than deleting a key that players already trust.
+- **Start request repeated too quickly:** fix the error, run
+  `systemctl --user reset-failed atomictux.service`, then start it again.
+- **User service manager unavailable:** log in normally as the service account
+  and enable lingering; avoid running the user-service commands under `sudo`.
+- **Remote clients cannot connect:** check the listening address, firewall,
+  router forwarding, and the IP/port entered in the game.
+
 
 ## Connect and play
 
@@ -284,7 +251,7 @@ sends snapshots at 20 Hz. Input older than 350 ms becomes neutral. Player identi
 and slot come from the connection, not client-supplied actor IDs. No client can
 submit authoritative positions, health, wins, power-ups, or board changes. The
 server simulates all bots. Online rules retain bombs, chain reactions, destructible
-crates, all five upgrades, kicking/bouncing, shield grace, and difficulty settings.
+crates, all six upgrades, kicking/bouncing, shield grace, and difficulty settings.
 
 Python's map RNG differs from Godot's; online clients receive the authoritative
 map rather than independently generating it. The shared rules are implemented in
@@ -319,9 +286,9 @@ Room state is in memory and is lost if the server restarts.
 
 ```sh
 # Offline Python model, room lifecycle, validation, and certificate tests.
-python3 -m unittest tests.test_server -v
+.venv/bin/python -m unittest tests.test_server -v
 # Real loopback TLS server + two headless Godot clients (needs local sockets).
-python3 -m tests.test_network_integration
+.venv/bin/python -m tests.test_network_integration
 # Multiplayer screen interactions (add --display-driver x11 without --headless for previews).
 ./godot.sh --headless --script tests/test_multiplayer_ui.gd
 # Existing single-player and UI regressions.
@@ -343,3 +310,9 @@ mobile lifecycle/network conditions or WAN latency.
 Reference APIs: [Godot TLSOptions](https://docs.godotengine.org/en/4.6/classes/class_tlsoptions.html),
 [Godot HTTPRequest](https://docs.godotengine.org/en/4.6/classes/class_httprequest.html), and
 [websockets 14.1 asyncio server](https://websockets.readthedocs.io/en/14.1/reference/asyncio/server.html).
+
+The client and server must both be updated for atomic bombs and the slower pace.
+The server uses weighted drops (bomb 10, fire 3, speed 1, kick 3, shield 3, atomic 2).
+Atomic pickups arm the next successful placement once; its blast crosses the full
+row and column through obstacles, without destroying permanent walls. Restart
+the server after deploying `server/simulation.py`; existing rooms are not preserved.
