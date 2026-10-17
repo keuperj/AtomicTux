@@ -17,7 +17,18 @@ from Git and Godot's resource scan; fresh checkouts need their own engine instal
 
 1. Install [Godot 4.6](https://godotengine.org/download/archive/4.6-stable/) (standard edition; no .NET needed).
 2. Import `project.godot` and press **F6** with `scenes/main.tscn` open, or **F5**.
-3. Choose AI difficulty on the title screen and select **Play Solo**.
+3. Select **Single Player**, choose **1–3 opponents**, their shared strength
+   (**Relaxed / Normal / Fierce**), and the available power-ups. Press **Start Game**.
+   Your setup is saved between launches.
+
+The landing page also offers **Multi Player** (the existing online lobby) and
+**Demo**: four AI penguins competing in a free-for-all with all five power-ups
+available as crate drops. Demo uses Normal strength, ignores movement/bomb input,
+and does not affect your win record. Pause to exit, or replay after the result.
+
+Solo power-up toggles cover extra bombs, blast range, speed, bomb kicking, and
+a one-hit shield. Disabled types never drop; turning all off disables drops.
+These options apply to solo games; online rooms retain their server rules.
 
 Command line: `godot --path .`
 

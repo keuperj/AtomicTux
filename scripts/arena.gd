@@ -32,8 +32,12 @@ var finished := false
 var winner := -2
 var elapsed := 0.0
 var difficulty := 1
+var ai_only := false
+var enabled_powerups: Array = POWER_UPS.duplicate()
 
-func start(seed_value: int, level: int = 1) -> void:
+func start(seed_value: int, level: int = 1, opponents: int = 3, powerups: Array = POWER_UPS, demo: bool = false) -> void:
+	ai_only = demo
+	enabled_powerups = POWER_UPS.filter(func(kind): return powerups.has(kind))
 	rng.seed = seed_value
 	difficulty = level
 	grid.clear()
@@ -59,9 +63,9 @@ func start(seed_value: int, level: int = 1) -> void:
 					tile = EMPTY
 			row.append(tile)
 		grid.append(row)
-	for id in 4:
+	for id in (4 if ai_only else clampi(opponents, 1, 3) + 1):
 		actors.append({"id": id, "cell": spawns[id], "previous": spawns[id], "position": Vector2(spawns[id]), "goal": null, "alive": true,
-			"cooldown": 0.0, "move_time": 0.17 if id == 0 else [0.42, 0.21, 0.17][level],
+			"cooldown": 0.0, "move_time": 0.17 if id == 0 and not ai_only else [0.42, 0.21, 0.17][level],
 			"capacity": 1, "power": 2, "bombs": 0, "kick": false, "shield": false, "invulnerable": 0.0, "bomb_cooldown": 0.0, "facing": Vector2i.DOWN})
 
 func tile(cell: Vector2i) -> int:
@@ -222,7 +226,7 @@ func place_bomb(id: int) -> bool:
 		"direction": Vector2i.ZERO, "motion_time": 0.0,
 		"passers": actors.filter(func(a): return a.alive and _overlaps(a.position, Vector2(actor.cell), ACTOR_RADIUS + BOMB_RADIUS)).map(func(a): return a.id)})
 	actor.bombs += 1
-	actor.bomb_cooldown = 4.0 if id > 0 and difficulty == 0 else 0.0
+	actor.bomb_cooldown = 4.0 if (id > 0 or ai_only) and difficulty == 0 else 0.0
 	return true
 
 func _bomb_blocked(cell: Vector2i) -> bool:
@@ -331,7 +335,7 @@ func tick(delta: float) -> void:
 	for actor in actors:
 		if actor.alive: _touch_actor(actor)
 	var survivors: Array = actors.filter(func(a): return a.alive)
-	if survivors.size() <= 1 or not actors[0].alive or remaining <= 0.0:
+	if survivors.size() <= 1 or (not ai_only and not actors[0].alive) or remaining <= 0.0:
 		finished = true
 		winner = survivors[0].id if survivors.size() == 1 else -1
 
@@ -348,8 +352,8 @@ func _detonate(index: int) -> void:
 		pickups.erase(cell)
 		if tile(cell) == CRATE:
 			grid[cell.y][cell.x] = EMPTY
-			if rng.randf() < 0.38:
-				pickups[cell] = POWER_UPS[rng.randi_range(0, POWER_UPS.size() - 1)]
+			if rng.randf() < 0.38 and not enabled_powerups.is_empty():
+				pickups[cell] = enabled_powerups[rng.randi_range(0, enabled_powerups.size() - 1)]
 	exploded.emit(cells)
 
 func _hit_by_fire(actor: Dictionary) -> void:

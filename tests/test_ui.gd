@@ -22,6 +22,8 @@ func run() -> void:
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png("res://builds/menu.png")
 	game._pointer_down(0, game.buttons[0].rect.get_center())
+	check(game.mode == "setup", "Single player opens setup")
+	game._start_match()
 	check(game.mode == "playing" and game.countdown == 3.0, "Play starts countdown")
 	game._bomb()
 	check(game.arena.bombs.is_empty(), "No bombs during countdown")
