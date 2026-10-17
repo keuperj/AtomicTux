@@ -54,10 +54,15 @@ func run() -> void:
 	await until(func(): return messages[1].has("rooms") and messages[1].rooms.rooms.size() == 1,"Other client sees waiting game")
 	second.send_message({"type":"join","room":room_id})
 	await until(func(): return messages[0].room.room.players.size() == 2,"Lobby updates player count")
+	first.send_message({"type":"powerup_amount","powerup":"bomb","change":1})
+	await until(func(): return int(messages[0].room.room.powerup_amounts.bomb) == 7 and int(messages[1].room.room.powerup_amounts.bomb) == 7, "Host amounts broadcast to both clients")
+	second.send_message({"type":"powerup_amount","powerup":"bomb","change":1})
+	await until(func(): return messages[1].has("error") and str(messages[1].error.message).contains("owner"), "Guest cannot change power-ups")
 	second.send_message({"type":"start"})
 	await until(func(): return messages[1].has("error"),"Non-owner cannot start")
 	first.send_message({"type":"start"})
 	if not await until(func(): return messages[0].has("started") and messages[1].has("started"),"Owner starts both clients"): quit(1); return
+	check(int(messages[1].started.state.powerup_amounts.bomb) == 7, "Server starts match with host amounts")
 	check(int(messages[1].started.slot) == 1,"Second client receives its own actor slot")
 	check(messages[0].started.state.humans.size() == 2 and messages[0].started.state.actors.size() == 4,"Empty slots filled with AI")
 	# Exercise the real main scene's online slot mapping and presentation state machine.

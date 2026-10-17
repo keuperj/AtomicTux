@@ -21,6 +21,8 @@ const BOMB_RADIUS := 0.30
 const MOTION_STEP := 0.04
 const POWER_UPS := ["bomb", "fire", "speed", "kick", "shield", "atomic"]
 const DROP_WEIGHTS := {"bomb": 10, "fire": 3, "speed": 1, "kick": 3, "shield": 3, "atomic": 2}
+const SOLO_AMOUNTS := {"bomb": 6, "fire": 4, "speed": 2, "kick": 2, "shield": 4, "atomic": 2}
+const MAX_AMOUNT := 20
 const ATOMIC_POWER := -1
 const DIRECTIONS := [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
 var grid: Array = []
@@ -36,10 +38,14 @@ var elapsed := 0.0
 var difficulty := 1
 var ai_only := false
 var enabled_powerups: Array = POWER_UPS.duplicate()
+var drop_weights: Dictionary = DROP_WEIGHTS.duplicate()
 
-func start(seed_value: int, level: int = 1, opponents: int = 3, powerups: Array = POWER_UPS, demo: bool = false) -> void:
+func start(seed_value: int, level: int = 1, opponents: int = 3, powerups: Array = POWER_UPS, demo: bool = false, amounts: Dictionary = {}) -> void:
 	ai_only = demo
-	enabled_powerups = POWER_UPS.filter(func(kind): return powerups.has(kind))
+	drop_weights = DROP_WEIGHTS.duplicate()
+	for kind in POWER_UPS:
+		drop_weights[kind] = clampi(int(amounts.get(kind, DROP_WEIGHTS[kind])), 0, MAX_AMOUNT)
+	enabled_powerups = POWER_UPS.filter(func(kind): return powerups.has(kind) and drop_weights[kind] > 0)
 	rng.seed = seed_value
 	difficulty = level
 	grid.clear()
@@ -370,10 +376,10 @@ func _detonate(index: int) -> void:
 
 func _roll_powerup() -> String:
 	var total := 0
-	for kind in enabled_powerups: total += int(DROP_WEIGHTS[kind])
+	for kind in enabled_powerups: total += int(drop_weights[kind])
 	var roll := rng.randi_range(1, total)
 	for kind in enabled_powerups:
-		roll -= int(DROP_WEIGHTS[kind])
+		roll -= int(drop_weights[kind])
 		if roll <= 0: return kind
 	return "bomb"
 

@@ -146,7 +146,13 @@ every 0.09 seconds. AI movement and Relaxed bomb delays are slower too.
 
 Crates retain a 38% pickup chance. With all types enabled, drop weights are
 extra bomb 10, blast range 3, speed 1, kick 3, shield 3, atomic 2: about 45%
-extra bombs and 5% speed. Disabled solo types are removed before weighting.
+extra bombs and 5% speed in demo play. Solo and multiplayer hosts use configurable amounts
+from 0–20, with defaults bomb 6, fire 4, speed 2, kick 2, shield 4, atomic 2.
+These are relative weights, not guaranteed counts per round. Zero-weight types
+are excluded; all zero disables drops. The 38% per-crate chance stays unchanged.
+Solo amounts are saved separately. Multiplayer rooms keep their own amounts
+across rematches and ownership changes; the server enforces host-only edits.
+Existing enabled/disabled settings migrate to default amounts or zero.
 
 The gold atom-and-cross pickup arms **one atomic bomb**. Your next successful
 bomb placement consumes it; failed placements do not. Multiple pickups do not

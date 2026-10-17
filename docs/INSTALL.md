@@ -16,6 +16,12 @@ are relative to your checkout; no particular username or checkout location is re
 5. Choose **Single Player** to configure a match, **Multi Player** to join a server,
    or **Demo** to watch four AI penguins compete.
 
+Single Player offers **− / +** controls for each power-up (0–20). Defaults are
+extra bomb **6**, blast range **4**, speed **2**, bomb kicking **2**, shield **4**,
+and atomic bomb **2**. Amounts are relative drop frequencies: 6 is three times
+as likely as 2 when a pickup appears. Zero disables a type. **Reset Power-up
+Defaults** restores these values; your choices are saved between launches.
+
 Keep the same signing key for updates. If Android reports a signing conflict,
 use an APK signed with the original key. Uninstalling the old app also allows a
 fresh install, but removes its saved settings and server trust.
@@ -127,7 +133,9 @@ secure WebSocket gameplay; you enter the IP and port separately in the game.
    operator's fingerprint, then choose **Trust & Connect**. Self-signed
    certificates are supported through this explicit trust step.
 3. Join a waiting game or create one. The owner can start whenever ready;
-   unused slots are filled with AI.
+   unused slots are filled with AI. Hosts can configure the same six power-up
+   amounts on the waiting page; guests can view them. These room settings
+   persist for rematches. Update the server if the controls are disabled.
 4. After a round, choose **Another Round** or return to **Game List**.
 
 Server availability depends on its operator. For your own server, see the

@@ -197,6 +197,11 @@ If startup fails, inspect `systemctl --user status` and `journalctl --user`:
    names, not accounts, and duplicate display names are allowed.
 5. The waiting room shows names, the owner, and the player count. The owner can
    start with 1–4 humans; remaining slots become AI at the chosen difficulty.
+   Before starting, the owner can adjust the six power-up amounts using **− / +**
+   (0–20) or **Reset Power-up Defaults**. Defaults are extra bomb 6, blast range 4,
+   speed 2, kicking 2, shield 4, atomic 2. Zero disables a type; other values set
+   relative frequency. Everyone sees the changes. Values persist for rematches
+   and ownership transfers, but each new room starts with the defaults.
 6. After the round, select **Another Round** to stay in the same room, or **Game List**
    to leave. The owner can start the rematch once remaining players have chosen
    another round; undecided players are shown in the waiting room.
@@ -312,7 +317,15 @@ Reference APIs: [Godot TLSOptions](https://docs.godotengine.org/en/4.6/classes/c
 [websockets 14.1 asyncio server](https://websockets.readthedocs.io/en/14.1/reference/asyncio/server.html).
 
 The client and server must both be updated for atomic bombs and the slower pace.
-The server uses weighted drops (bomb 10, fire 3, speed 1, kick 3, shield 3, atomic 2).
+The server uses the room owner’s configured drop amounts (defaults: bomb 6, fire 4,
+speed 2, kick 2, shield 4, atomic 2). All-zero settings disable pickup drops.
 Atomic pickups arm the next successful placement once; its blast crosses the full
 row and column through obstacles, without destroying permanent walls. Restart
 the server after deploying `server/simulation.py`; existing rooms are not preserved.
+
+Room messages include `powerup_amounts`. The owner can send `powerup_amount`
+with a known `powerup` key and an integer `change` of -1 or 1, or `reset_powerups`.
+The server validates ownership, disallows changes during play, clamps amounts to
+0–20, and broadcasts the resulting room. Each match copies its room’s amounts
+into simulation state, which is also included in snapshots. Update and restart
+the server to enable host controls; clients disable these controls on older servers.

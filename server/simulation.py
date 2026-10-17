@@ -6,6 +6,8 @@ from collections import deque
 DIRS = ((0, -1), (1, 0), (0, 1), (-1, 0))
 POWER_UPS = ("bomb", "fire", "speed", "kick", "shield", "atomic")
 DROP_WEIGHTS = (10, 3, 1, 3, 3, 2)
+DEFAULT_AMOUNTS = dict(zip(POWER_UPS, (6, 4, 2, 2, 4, 2)))
+MAX_AMOUNT = 20
 ATOMIC_POWER = -1
 FUSE, FIRE_TIME, KICK_STEP, SHIELD_GRACE = 3.2, .65, .09, .75
 ACTOR_RADIUS, BOMB_RADIUS, MOTION_STEP = .28, .30, .04
@@ -20,7 +22,9 @@ def add(a, b, n=1):
     return (a[0] + b[0] * n, a[1] + b[1] * n)
 
 class Match:
-    def __init__(self, seed, players, difficulty=1, duration=150):
+    def __init__(self, seed, players, difficulty=1, duration=150, powerup_amounts=None):
+        self.powerup_amounts = dict(zip(POWER_UPS, DROP_WEIGHTS)) if powerup_amounts is None else dict(powerup_amounts)
+        self.drop_weights = tuple(self.powerup_amounts[k] for k in POWER_UPS)
         self.rng = random.Random(seed)
         self.difficulty = difficulty
         self.humans = set(players)
@@ -237,7 +241,8 @@ class Match:
                 self.pickups.pop(c, None)
                 if self.tile(c) == 2:
                     self.grid[c[1]][c[0]] = 0
-                    if self.rng.random() < .38: self.pickups[c] = self.rng.choices(POWER_UPS, weights=DROP_WEIGHTS, k=1)[0]
+                    if self.rng.random() < .38 and any(self.drop_weights):
+                        self.pickups[c] = self.rng.choices(POWER_UPS, weights=self.drop_weights, k=1)[0]
             self.events.append(dict(type='explosion', cells=cells))
         self.update_passers()
         for a in self.actors:
@@ -332,7 +337,7 @@ class Match:
             if dt - used > .000001: self.bot(actor_id, dt - used)
 
     def snapshot(self):
-        return dict(grid=self.grid, actors=self.actors, bombs=self.bombs,
+        return dict(grid=self.grid, actors=self.actors, bombs=self.bombs, powerup_amounts=self.powerup_amounts,
                     flames=[dict(cell=c, time=t) for c,t in self.flames.items()],
                     pickups=[dict(cell=c, kind=k) for c,k in self.pickups.items()],
                     remaining=self.remaining, elapsed=self.elapsed, finished=self.finished,

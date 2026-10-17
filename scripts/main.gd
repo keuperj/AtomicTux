@@ -39,7 +39,7 @@ var font: Font = ThemeDB.fallback_font
 var mode := "menu"
 var level := 1
 var opponents := 3
-var enabled_powerups: Array = Arena.POWER_UPS.duplicate()
+var powerup_amounts: Dictionary = Arena.SOLO_AMOUNTS.duplicate()
 var demo := false
 var clock := 0.0
 var accumulator := 0.0
@@ -282,9 +282,13 @@ func _cycle_opponents() -> void:
 	_save_settings()
 	_make_buttons()
 
-func _toggle_powerup(kind: String) -> void:
-	if enabled_powerups.has(kind): enabled_powerups.erase(kind)
-	else: enabled_powerups.append(kind)
+func _change_powerup_amount(kind: String, change: int) -> void:
+	powerup_amounts[kind] = clampi(int(powerup_amounts[kind]) + change, 0, Arena.MAX_AMOUNT)
+	_save_settings()
+	_make_buttons()
+
+func _reset_powerup_amounts() -> void:
+	powerup_amounts = Arena.SOLO_AMOUNTS.duplicate()
 	_save_settings()
 	_make_buttons()
 
@@ -301,7 +305,7 @@ func _start_match(as_demo: bool = false) -> void:
 	online_ui.hide()
 	Input.emulate_mouse_from_touch = false
 	match_seed = randi()
-	arena.start(match_seed, 1 if demo else level, 3 if demo else opponents, Arena.POWER_UPS if demo else enabled_powerups, demo)
+	arena.start(match_seed, 1 if demo else level, 3 if demo else opponents, Arena.POWER_UPS, demo, {} if demo else powerup_amounts)
 	mode = "playing"
 	countdown = 3.0
 	death_remaining = 0.0
@@ -375,7 +379,9 @@ func _make_buttons() -> void:
 		_button(Rect2(80, 290, 510, 66), "STRENGTH: " + ["RELAXED", "NORMAL", "FIERCE"][level], _cycle_level)
 		for i in Arena.POWER_UPS.size():
 			var kind: String = Arena.POWER_UPS[i]
-			_button(Rect2(1050, 185 + i * 74, 150, 58), "ON" if enabled_powerups.has(kind) else "OFF", _toggle_powerup.bind(kind), enabled_powerups.has(kind))
+			_button(Rect2(1040, 185 + i * 74, 54, 58), "−", _change_powerup_amount.bind(kind, -1))
+			_button(Rect2(1150, 185 + i * 74, 54, 58), "+", _change_powerup_amount.bind(kind, 1))
+		_button(Rect2(690, 650, 514, 64), "RESET POWER-UP DEFAULTS", _reset_powerup_amounts)
 		_button(Rect2(80, 650, 350, 64), "START GAME   →", _start_match, true)
 		_button(Rect2(450, 650, 200, 64), "BACK", _menu)
 	elif mode == "playing":
@@ -449,9 +455,9 @@ func _draw_setup() -> void:
 	_text(Vector2(80, 148), "Single player", 46, WHITE)
 	_text(Vector2(80, 403), "Tap to cycle opponent count and strength.", 19, MUTED)
 	_text(Vector2(80, 440), ["Relaxed: slower movement and fewer bombs.", "Normal: a balanced challenge.", "Fierce: fast movement, less time to escape."][level], 19, GOLD)
-	_text(Vector2(80, 510), "Power-ups appear inside destroyed crates.", 19, MUTED)
-	_text(Vector2(80, 543), "Switch them all off for a classic bomb duel.", 19, MUTED)
-	_text(Vector2(690, 155), "AVAILABLE POWER-UPS", 17, TEAL)
+	_text(Vector2(80, 510), "Amounts set how often each pickup appears.", 19, MUTED)
+	_text(Vector2(80, 543), "Higher = more common. Zero = disabled.", 19, MUTED)
+	_text(Vector2(690, 155), "POWER-UP AMOUNTS", 17, TEAL)
 	var titles := ["Extra bomb", "Blast range", "Speed", "Bomb kicking", "Shield", "Atomic bomb"]
 	var descriptions := ["Carry one more bomb", "Reach farther with each blast", "Move faster through the arena", "Push bombs; they bounce off walls", "Survive one bomb blast", "Next bomb blasts a full cross"]
 	for i in Arena.POWER_UPS.size():
@@ -459,6 +465,8 @@ func _draw_setup() -> void:
 		draw_texture_rect(ICONS[Arena.POWER_UPS[i]], Rect2(690, y + 5, 48, 48), false)
 		_text(Vector2(753, y + 24), titles[i], 23, WHITE)
 		_text(Vector2(753, y + 49), descriptions[i], 15, MUTED)
+		var amount: int = powerup_amounts[Arena.POWER_UPS[i]]
+		_text_center(Vector2(1122, y + 37), str(amount), 27, TEAL if amount > 0 else MUTED)
 
 func _draw_match() -> void:
 	draw_set_transform(Vector2(layout_extra.x / 2.0, 0))
@@ -685,20 +693,27 @@ func _load_settings() -> void:
 		muted = bool(config.get_value("game","muted",false))
 		best = int(config.get_value("game","wins",0))
 		opponents = clampi(int(config.get_value("solo", "opponents", 3)), 1, 3)
-		var saved = config.get_value("solo", "powerups", Arena.POWER_UPS)
-		if saved is Array:
-			enabled_powerups = Arena.POWER_UPS.filter(func(kind): return saved.has(kind))
-			if not config.has_section_key("solo", "atomic_available") and not enabled_powerups.is_empty(): enabled_powerups.append("atomic")
+		powerup_amounts = _read_powerup_amounts(config)
 	sound.enabled = not muted
+
+func _read_powerup_amounts(config: ConfigFile) -> Dictionary:
+	var amounts := Arena.SOLO_AMOUNTS.duplicate()
+	var saved = config.get_value("solo", "powerup_amounts", {})
+	var old_enabled = config.get_value("solo", "powerups", Arena.POWER_UPS)
+	for kind in Arena.POWER_UPS:
+		if saved is Dictionary and saved.has(kind) and (saved[kind] is int or saved[kind] is float):
+			amounts[kind] = clampi(int(saved[kind]), 0, Arena.MAX_AMOUNT)
+		elif old_enabled is Array and not old_enabled.has(kind):
+			amounts[kind] = 0
+	return amounts
 
 func _save_settings() -> void:
 	var config := ConfigFile.new()
 	config.set_value("game","difficulty",level)
 	config.set_value("game","muted",muted)
 	config.set_value("game","wins",best)
-	config.set_value("solo", "atomic_available", true)
 	config.set_value("solo", "opponents", opponents)
-	config.set_value("solo", "powerups", enabled_powerups)
+	config.set_value("solo", "powerup_amounts", powerup_amounts)
 	config.save("user://settings.cfg")
 
 func _actor_name(id: int) -> String:

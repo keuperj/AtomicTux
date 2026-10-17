@@ -9,6 +9,7 @@ var port_edit: LineEdit
 var name_edit: LineEdit
 var room_edit: LineEdit
 var difficulty_select: OptionButton
+var amount_controls: Dictionary = {}
 var room: Dictionary = {}
 var rooms: Array = []
 var page := "connect"
@@ -50,12 +51,13 @@ func clear(title: String, subtitle: String) -> void:
 	label(subtitle,18)
 	status_label = null
 
-func label(value: String, font_size: int = 22, color: Color = Color("edf6fc")) -> Label:
+func label(value: String, font_size: int = 22, color: Color = Color("edf6fc"), parent: Node = null) -> Label:
+	if parent == null: parent = panel
 	var node := Label.new()
 	node.text = value
 	node.add_theme_font_size_override("font_size",font_size)
 	node.add_theme_color_override("font_color",color)
-	panel.add_child(node)
+	parent.add_child(node)
 	return node
 
 func button(value: String, action: Callable, parent: Node = null) -> Button:
@@ -148,9 +150,50 @@ func show_browser() -> void:
 func show_room() -> void:
 	page = "room"
 	clear(str(room.name),"WAITING ROOM  •  %d / 4 PLAYERS" % room.players.size())
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(scroll)
+	var body := VBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 10)
+	scroll.add_child(body)
 	for player in room.players:
-		label("%s%s%s" % [player.name, "  • OWNER" if player.id == room.owner else "", "  • READY" if player.ready else "  • DECIDING NEXT ROUND"],24)
-	for i in range(room.players.size(),4): label("Empty slot  •  AI will join at start",20,Color("829caf"))
+		label("%s%s%s" % [player.name, "  • OWNER" if player.id == room.owner else "", "  • READY" if player.ready else "  • DECIDING NEXT ROUND"],20,Color("edf6fc"),body)
+	label("%d empty slots will be filled with AI" % (4-room.players.size()),18,Color("829caf"),body)
+	label("POWER-UP AMOUNTS · Higher = more common · 0 = disabled",18,Color("68efcd"),body)
+	amount_controls.clear()
+	var amounts: Dictionary = room.get("powerup_amounts", TuxArena.SOLO_AMOUNTS)
+	var can_edit: bool = net.identity == room.owner and room.state != "playing" and room.has("powerup_amounts")
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 20)
+	grid.add_theme_constant_override("v_separation", 8)
+	body.add_child(grid)
+	var names := ["Extra bomb", "Blast range", "Speed", "Bomb kicking", "Shield", "Atomic bomb"]
+	for i in TuxArena.POWER_UPS.size():
+		var kind: String = TuxArena.POWER_UPS[i]
+		var row := HBoxContainer.new()
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_theme_constant_override("separation", 6)
+		grid.add_child(row)
+		var caption := label(names[i],20,Color("edf6fc"),row)
+		caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var minus := button("−",func(): net.send_message({"type":"powerup_amount","powerup":kind,"change":-1}),row)
+		minus.custom_minimum_size.x = 48
+		minus.disabled = not can_edit or int(amounts[kind]) <= 0
+		var value := label(str(int(amounts[kind])),22,Color("68efcd"),row)
+		value.custom_minimum_size.x = 32
+		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var plus := button("+",func(): net.send_message({"type":"powerup_amount","powerup":kind,"change":1}),row)
+		plus.custom_minimum_size.x = 48
+		plus.disabled = not can_edit or int(amounts[kind]) >= TuxArena.MAX_AMOUNT
+		amount_controls[kind] = {"minus":minus,"plus":plus,"value":value}
+	if net.identity == room.owner:
+		var reset := button("RESET POWER-UP DEFAULTS",func(): net.send_message({"type":"reset_powerups"}),body)
+		reset.disabled = not can_edit
+	if not room.has("powerup_amounts"):
+		label("Update the server to configure power-up amounts.",18,Color("ffce74"),body)
 	var ready := false
 	var all_ready := true
 	for player in room.players:

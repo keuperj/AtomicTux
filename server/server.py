@@ -20,9 +20,9 @@ import tempfile
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
 try:
-    from .simulation import Match, DIRS
+    from .simulation import Match, DIRS, DEFAULT_AMOUNTS, MAX_AMOUNT
 except ImportError:
-    from simulation import Match, DIRS
+    from simulation import Match, DIRS, DEFAULT_AMOUNTS, MAX_AMOUNT
 
 LOG = logging.getLogger('atomictux')
 
@@ -87,10 +87,11 @@ class Room:
         self.members, self.ready, self.slots = {owner.id: owner}, {owner.id: True}, {}
         self.state, self.difficulty, self.match = 'waiting', difficulty, None
         self.task, self.round = None, 0
+        self.powerup_amounts = DEFAULT_AMOUNTS.copy()
 
     def public(self):
         return dict(id=self.id, name=self.name, owner=self.owner, state=self.state,
-                    difficulty=self.difficulty, round=self.round,
+                    difficulty=self.difficulty, round=self.round, powerup_amounts=self.powerup_amounts.copy(),
                     players=[dict(id=c.id, name=c.name, ready=self.ready[c.id]) for c in self.members.values()])
 
 class GameServer:
@@ -175,6 +176,20 @@ class GameServer:
             if not room or room.state == 'playing': raise ValueError('The round is still running.')
             room.ready[c.id], room.state = True, 'waiting'
             self.broadcast_room(room)
+        elif kind in ('powerup_amount', 'reset_powerups'):
+            room = c.room
+            if not room or room.owner != c.id: raise ValueError('Only the game owner can change power-ups.')
+            if room.state == 'playing': raise ValueError('Power-ups cannot change during a round.')
+            if kind == 'reset_powerups':
+                room.powerup_amounts = DEFAULT_AMOUNTS.copy()
+            else:
+                powerup, change = msg.get('powerup'), msg.get('change')
+                if not isinstance(powerup, str) or powerup not in DEFAULT_AMOUNTS:
+                    raise ValueError('Unknown power-up.')
+                if type(change) is not int or change not in (-1, 1):
+                    raise ValueError('Power-up change must be -1 or 1.')
+                room.powerup_amounts[powerup] = max(0, min(MAX_AMOUNT, room.powerup_amounts[powerup] + change))
+            self.broadcast_room(room)
         elif kind == 'start':
             room = c.room
             if not room or room.owner != c.id: raise ValueError('Only the game owner can start.')
@@ -182,7 +197,7 @@ class GameServer:
             if not all(room.ready.values()): raise ValueError('Waiting for players to choose another round or leave.')
             room.slots = {client_id: i for i,client_id in enumerate(room.members)}
             room.match = Match(secrets.randbits(32), {room.slots[p.id]: p.name for p in room.members.values()},
-                               room.difficulty, self.round_seconds)
+                               room.difficulty, self.round_seconds, room.powerup_amounts)
             room.state, room.round = 'playing', room.round+1
             for p in room.members.values():
                 p.direction, p.bomb = (0,0), False

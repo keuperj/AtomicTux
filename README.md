@@ -14,9 +14,10 @@ one very good reason to keep moving.
 ## Small penguins. Plenty of ways to play.
 
 - **Make it your match.** Face one to three AI opponents, choose Relaxed, Normal,
-  or Fierce strength, and pick which power-ups can appear.
+  or Fierce strength, and adjust how often each power-up appears.
 - **Bring your friends.** Create or join online rooms for up to four players.
-  Start when you're ready; bots fill the spare seats. Stay for a rematch.
+  Tune the power-up amounts, then start when you're ready; bots fill the spare seats.
+  Stay for a rematch.
 - **Watch the chaos.** Demo mode pits four AI penguins against each other with
   every power-up available.
 - **Keep your thumbs in the action.** Smooth movement, a large right-hand
@@ -32,7 +33,7 @@ one very good reason to keep moving.
 
 | Power-up | Your advantage |
 | --- | --- |
-| **Extra bomb** | Plant more bombs at once. The most common pickup. |
+| **Extra bomb** | Plant more bombs at once. The most common pickup by default. |
 | **Blast range** | Reach farther down the corridors. |
 | **Speed** | Get a little more distance between you and the fuse. |
 | **Bomb kicking** | Send bombs sliding and bouncing through the arena. |
@@ -42,7 +43,7 @@ one very good reason to keep moving.
 Your own bombs are dangerous too. Ordinary blasts stop at walls and crates;
 atomic blasts pass through them while permanent walls stay intact.
 
-![Single-player setup with opponent count, difficulty, and six individual power-up switches](docs/screenshots/single-player.png)
+![Single-player setup with opponent count, difficulty, and six individual power-up amount controls](docs/screenshots/single-player.png)
 
 *Tune your next round, from a simple duel to a fully powered four-penguin battle.*
 

@@ -70,6 +70,22 @@ class SimulationTests(unittest.TestCase):
         self.assertTrue(300 < drops.count('speed') < 600)
         self.assertIn('atomic', m.snapshot()['actors'][0])
 
+    def test_configurable_drop_pool(self):
+        from server.simulation import POWER_UPS
+        for enabled in (None, 'shield'):
+            amounts = {k: (4 if k == enabled else 0) for k in POWER_UPS}
+            found = []
+            for seed in range(100):
+                m = Match(seed, {0:'Alice'}, powerup_amounts=amounts)
+                m.grid[1][2] = 2
+                m.place(0)
+                m.bombs[0]['fuse'] = 0
+                m.tick(.01)
+                found.extend(m.pickups.values())
+                self.assertTrue(all(k == enabled for k in m.pickups.values()))
+            if enabled: self.assertTrue(found)
+            else: self.assertFalse(found)
+
     def test_collision_and_capacity(self):
         m=self.fresh()
         m.move(0,(-1,0),.23)
@@ -291,6 +307,48 @@ class LobbyTests(unittest.IsolatedAsyncioTestCase):
     def create(self):
         self.server.command(self.clients[0],dict(type='create',name='Test room',difficulty=0))
         return self.clients[0].room
+
+    async def test_host_powerup_settings(self):
+        from server.simulation import DEFAULT_AMOUNTS
+        r = self.create()
+        owner, guest = self.clients[:2]
+        self.server.command(guest, dict(type='join', room=r.id))
+        self.assertEqual(r.public()['powerup_amounts'], DEFAULT_AMOUNTS)
+        for command in ('powerup_amount', 'reset_powerups'):
+            with self.assertRaises(ValueError):
+                self.server.command(guest, dict(type=command, powerup='bomb', change=1))
+        for change in (True, 1.0, 0, 2, -2, '1', None):
+            with self.assertRaises(ValueError):
+                self.server.command(owner, dict(type='powerup_amount', powerup='bomb', change=change))
+        for kind in ('unknown', [], None):
+            with self.assertRaises(ValueError):
+                self.server.command(owner, dict(type='powerup_amount', powerup=kind, change=1))
+        for _ in range(30): self.server.command(owner, dict(type='powerup_amount', powerup='bomb', change=1))
+        self.assertEqual(r.powerup_amounts['bomb'], 20)
+        for _ in range(30): self.server.command(owner, dict(type='powerup_amount', powerup='speed', change=-1))
+        self.assertEqual(r.powerup_amounts['speed'], 0)
+        expected = r.powerup_amounts.copy()
+        self.server.command(owner, dict(type='start'))
+        self.assertEqual(r.match.powerup_amounts, expected)
+        self.assertEqual(r.match.snapshot()['powerup_amounts'], expected)
+        with self.assertRaises(ValueError): self.server.command(owner, dict(type='reset_powerups'))
+        with self.assertRaises(ValueError): self.server.command(owner, dict(type='powerup_amount', powerup='bomb', change=-1))
+        r.task.cancel()
+        await asyncio.gather(r.task, return_exceptions=True)
+        r.state = 'finished'
+        r.ready = dict.fromkeys(r.members, False)
+        self.server.leave(owner)
+        self.assertEqual(r.owner, guest.id)
+        self.assertEqual(r.powerup_amounts, expected)
+        self.server.command(guest, dict(type='ready'))
+        self.server.command(guest, dict(type='start'))
+        self.assertEqual(r.match.powerup_amounts, expected)
+        r.task.cancel()
+        await asyncio.gather(r.task, return_exceptions=True)
+        r.state = 'finished'
+        self.server.command(guest, dict(type='reset_powerups'))
+        self.assertEqual(r.powerup_amounts, DEFAULT_AMOUNTS)
+        self.assertEqual(r.match.powerup_amounts, expected, 'Previous match owns an independent copy')
 
     async def test_join_start_and_capacity(self):
         r=self.create()

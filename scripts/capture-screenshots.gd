@@ -24,12 +24,12 @@ func run() -> void:
 	await process_frame
 	game.opponents = 3
 	game.level = 1
-	game.enabled_powerups = game.Arena.POWER_UPS.duplicate()
+	game.powerup_amounts = game.Arena.SOLO_AMOUNTS.duplicate()
 	await capture(game, "landing")
 	game._open_setup()
 	await capture(game, "single-player")
 	game._start_match()
-	game.arena.start(7, 1)
+	game.arena.start(7, 1, 3, game.Arena.POWER_UPS, false, game.powerup_amounts)
 	game.countdown = 0
 	# Drive the human slot with the same bot for a reproducible live gameplay view.
 	for frame in 2400:

@@ -47,10 +47,18 @@ func run() -> void:
 	game.network.message_received.emit({"type":"rooms","rooms":entries})
 	check(ui.room_edit.text == "My new room" and ui.difficulty_select.selected == 2,"Live refresh preserves creation draft")
 	await capture("res://builds/multiplayer-browser.png")
-	var room := {"id":"1","name":"Penguin party","owner":"alice","state":"waiting","players":[
+	var room := {"id":"1","name":"Penguin party","owner":"alice","state":"waiting","powerup_amounts":TuxArena.SOLO_AMOUNTS.duplicate(),"players":[
 		{"id":"alice","name":"Ada Tux","ready":true},{"id":"bob","name":"Bob","ready":true}]}
 	game.network.message_received.emit({"type":"room","room":room})
 	check(ui.page == "room" and ui.room.players.size() == 2,"Waiting room shows player count and names")
+	check(ui.amount_controls.size() == 6 and ui.amount_controls.bomb.value.text == "6", "Room shows all six default amounts")
+	check(not ui.amount_controls.bomb.plus.disabled and not ui.amount_controls.bomb.minus.disabled, "Host can edit amounts")
+	room.powerup_amounts.bomb = 0
+	room.powerup_amounts.shield = 20
+	game.network.message_received.emit({"type":"room","room":room})
+	check(ui.amount_controls.bomb.minus.disabled and ui.amount_controls.shield.plus.disabled, "Amount bounds disable the corresponding buttons")
+	room.powerup_amounts = TuxArena.SOLO_AMOUNTS.duplicate()
+	game.network.message_received.emit({"type":"room","room":room})
 	var start: Button
 	for child in ui.panel.get_children():
 		if child is Button and child.text == "START GAME": start = child
@@ -64,6 +72,11 @@ func run() -> void:
 	room.owner = "bob"
 	game.network.message_received.emit({"type":"room","room":room})
 	check(not ui.panel.get_children().any(func(c): return c is Button and c.text == "START GAME"),"Non-owner has no start control")
+	check(ui.amount_controls.bomb.plus.disabled and ui.amount_controls.bomb.minus.disabled, "Guests see amounts but cannot edit")
+	room.erase("powerup_amounts")
+	room.owner = "alice"
+	game.network.message_received.emit({"type":"room","room":room})
+	check(ui.amount_controls.bomb.plus.disabled, "Older server does not expose unsupported edits")
 	game._menu()
 	check(not ui.visible and game.mode == "menu" and not Input.emulate_mouse_from_touch,"Return to solo menu restores game controls")
 	game.queue_free()
