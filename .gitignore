@@ -11,6 +11,12 @@ export_credentials.cfg
 
 # Project-local Godot editor binary.
 tools/godot/
+tools/jdk-17/
+tools/android-sdk/
+tools/godot-data/
+tools/config/
+tools/cache/
+tools/downloads/
 
 server/certs/
 __pycache__/

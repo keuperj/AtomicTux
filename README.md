@@ -46,23 +46,81 @@ Difficulty, sound preference, and lifetime wins are saved in Godot's `user://` d
 
 ## Android export
 
-An `Android` export preset is included for ARMv7 and ARM64, with landscape
-orientation, the Compatibility renderer, immersive display, and Internet permission for multiplayer.
+An `Android` export preset is included with landscape orientation, the Compatibility
+renderer, immersive display, and Internet permission for multiplayer.
 
-1. Install the **Godot 4.6 export templates** via Editor → Manage Export Templates.
-2. Install **OpenJDK 17** and the Android SDK. Set Java SDK Path and Android SDK Path in Godot's editor settings.
-3. For the Godot 4.6 toolchain, install Platform Tools, Build Tools **35.0.1**, and Android Platform **35**. See the [official setup instructions](https://docs.godotengine.org/en/4.6/tutorials/export/exporting_for_android.html) for the full SDK setup, including NDK/CMake if using Gradle.
-4. Project → Export → Android → Export Project with debug enabled, or run:
+### Local Linux installation
+
+On Linux x86_64, install `curl`, `unzip`, and `tar` with your package manager,
+then run from the project directory (the local Godot 4.6 engine must already
+be installed as described above):
 
 ```sh
-godot --headless --path . --export-debug Android builds/AtomicTux.apk
-adb install -r builds/AtomicTux.apk
+./scripts/setup-android.sh
 ```
 
-The initial implementation was tested with Godot 4.6 on Linux. An APK has **not**
-been built or tested on a physical Android device: the development environment
-had Java 11 and no Android SDK/export templates. Check touch sizing, safe areas,
-performance, audio, and lifecycle behavior on devices before a release.
+The script downloads Java 17, Android command-line tools, Platform Tools,
+Build Tools **35.0.1**, Platform **35**, and Godot 4.6 Android export templates.
+Read and accept the Android SDK licenses when prompted. Internet access is
+required; completed downloads and installed tools are reused on subsequent runs.
+No root access or Android Studio is needed. This setup uses the existing
+non-Gradle APK preset; NDK and CMake are unnecessary for that workflow.
+See [Godot's Android setup reference](https://docs.godotengine.org/en/4.6/tutorials/export/exporting_for_android.html)
+for other export workflows.
+
+Everything is installed inside this checkout and excluded from Git and Godot's
+resource scan:
+
+| Component | Project-relative path |
+| --- | --- |
+| Java SDK | `tools/jdk-17` |
+| Android SDK | `tools/android-sdk` |
+| Android export templates | `tools/godot-data/godot/export_templates/4.6.stable` |
+| Godot editor settings and debug keystore | `tools/config` |
+| Download cache | `tools/downloads` |
+
+The installer sets Godot's **Export → Android → Java SDK Path**, **Android SDK
+Path**, and **Debug Keystore** automatically. The launcher also supplies debug
+signing credentials to the export preset. Always open this installation with
+`./godot.sh`: the launcher sets the local Java/Android environment and isolates
+Godot's configuration and data from other projects. Game preferences and saved
+server trust used through this launcher also live under `tools/godot-data`;
+previous global preferences are not migrated. Close an already-open editor and
+reopen it through the launcher after setup. If you move the checkout, rerun the
+setup script to refresh its absolute paths.
+
+For this checkout the SDK paths are:
+
+```text
+/home/keuper/Projekte/AtomicTux/tools/jdk-17
+/home/keuper/Projekte/AtomicTux/tools/android-sdk
+```
+
+### Build and install on a phone
+
+Choose **Project → Export → Android → Export Project** with **Export With Debug**
+enabled, or run:
+
+```sh
+mkdir -p builds
+./godot.sh --headless --editor --quit
+./godot.sh --headless --export-debug Android builds/AtomicTux.apk
+```
+
+Copy `builds/AtomicTux.apk` to the phone and open it in its file manager; allow
+installation from that file manager when Android prompts. Alternatively, enable
+USB debugging in the phone's Developer options, connect it with a data-capable
+USB cable, approve the debugging prompt, and run:
+
+```sh
+./tools/android-sdk/platform-tools/adb devices
+./tools/android-sdk/platform-tools/adb install -r builds/AtomicTux.apk
+```
+
+A debug APK has been exported and its signature verified with this local toolchain.
+Physical Android-device testing is still outstanding. Check touch sizing, safe
+areas, performance, audio, networking, and lifecycle behavior before a release.
+Keep `tools/config/debug.keystore` to install future debug builds as updates.
 
 The included preset produces a debug APK after toolchain setup. Play Store
 publishing needs a release keystore and an AAB/Gradle export configuration.
@@ -113,4 +171,4 @@ certificate trust, disconnect behavior, testing, and deployment details.
 
 Current scope: one arena theme, four contestants, single-player or server-hosted
 online rooms, five power-ups, generated penguins with procedural animation, and
-synthesized effects. Android APK export/device testing remains outstanding.
+synthesized effects. Physical Android-device testing remains outstanding.
