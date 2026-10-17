@@ -31,6 +31,12 @@ Touch the right joystick, then keep your finger down and slide to steer. Movemen
 continues while held, even when your finger slides beyond the ring. Return to the
 center to stop temporarily or lift to release. Movement follows the arena's four
 grid directions. Another finger can drop bombs with the left button simultaneously.
+All contestants move continuously, including AI and online players. Releasing
+the joystick stops your Tux between tile centers; reversing direction responds
+immediately. Turns gently align with corridor centers. Walls, crates, bombs,
+other players, and flames collide with the Tux's body at its actual position.
+Bombs still occupy tiles and are placed on the nearest tile.
+The joystick has a larger ring and touch area for small phone screens.
 The game pauses when backgrounded and clears held touches.
 
 The landscape layout fills phone and tablet aspect ratios without stretching
@@ -55,7 +61,7 @@ Difficulty, sound preference, and lifetime wins are saved in Godot's `user://` d
 - You may leave a bomb you just planted, but cannot walk back through it without Bomb Kick.
 - On elimination, the lethal blast stays visible for a two-second Tux death animation before the next-game dialog appears.
 - A round ends immediately on your elimination or when one survivor remains. The **2:30** timer ends unresolved rounds in a draw.
-- Relaxed bots move every **0.42 seconds** and wait at least **4 seconds** between bomb placements. Normal and Fierce retain their **0.21 / 0.17 second** movement intervals. All bots use the same routing and escape logic.
+- Relaxed bots take **0.42 seconds per tile** and wait at least **4 seconds** between bomb placements. Normal and Fierce take **0.21 / 0.17 seconds per tile**. Movement is continuous at every difficulty; all bots use the same routing and escape logic.
 
 ## Android export
 
@@ -154,6 +160,8 @@ godot --headless --path . --script tests/test_kick.gd
 godot --headless --path . --script tests/test_ui.gd
 # Continuous touch input, responsive layout, and cached audio effects.
 ./godot.sh --headless --script tests/test_mobile.gd
+# Fractional movement, stopping, turns, swept collisions, and AI waypoints.
+./godot.sh --headless --script tests/test_motion.gd
 # Capture desktop-rendered phone/tablet previews and WAV sound samples in builds/.
 ./godot.sh --script tests/test_mobile.gd
 # Run UI tests with rendering; saves builds/menu.png and builds/arena.png.

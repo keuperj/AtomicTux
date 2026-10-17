@@ -86,7 +86,7 @@ func run() -> void:
 	game.countdown = 0.0
 	game.arena.flames[Vector2i(2,1)] = 0.5
 	game.held[0] = Vector2i.RIGHT
-	game._process(0.02)
+	game._process(0.08)
 	check(game.mode == "dying", "Walking into existing fire also shows death sequence")
 	game._process(2.1)
 	game._start_match()
@@ -97,7 +97,7 @@ func run() -> void:
 	game._start_match()
 	game.countdown = 0.0
 	game.arena.pickups[Vector2i(2,1)] = "shield"
-	game.arena.move_actor(0,Vector2i.RIGHT)
+	game.arena.move_actor(0,Vector2i.RIGHT,game.arena.actors[0].move_time)
 	check(game.arena.actors[0].shield and game.flash.contains("SHIELD READY"), "Shield pickup updates player feedback")
 	game.arena.place_bomb(0)
 	game.arena.bombs[0].fuse = 0.0

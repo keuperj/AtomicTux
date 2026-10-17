@@ -2,6 +2,7 @@
 import asyncio
 import copy
 import json
+import math
 from pathlib import Path
 import tempfile
 import subprocess
@@ -19,6 +20,9 @@ class SimulationTests(unittest.TestCase):
             for x in range(1,12): m.grid[y][x] = 0
         return m
 
+    def put(self, m, actor_id, cell):
+        m.actors[actor_id].update(cell=cell, position=tuple(float(v) for v in cell), goal=None)
+
     def test_seed_and_spawns(self):
         self.assertEqual(Match(7,{}).grid,Match(7,{}).grid)
         m = Match(8,{0:'Alice',2:'Bob'},0)
@@ -29,23 +33,25 @@ class SimulationTests(unittest.TestCase):
 
     def test_collision_and_capacity(self):
         m=self.fresh()
+        m.move(0,(-1,0),.17)
         self.assertFalse(m.move(0,(-1,0)))
         self.assertFalse(m.move(0,(1,1)))
         self.assertTrue(m.place(0))
         self.assertFalse(m.place(0))
+        self.assertTrue(m.move(0,(1,0),m.actors[0]['move_time']))
         self.assertTrue(m.move(0,(1,0)))
-        self.assertFalse(m.move(0,(1,0)))
         m.tick(.2)
+        m.move(0,(-1,0),.3)
         self.assertFalse(m.move(0,(-1,0)))
 
     def test_chain_and_walls(self):
         m=self.fresh()
         m.grid[1][4]=2
         m.place(0)
-        m.actors[0]['cell']=(8,5)
-        m.actors[1]['cell']=(3,1)
+        self.put(m, 0, (8,5))
+        self.put(m, 1, (3,1))
         m.place(1)
-        m.actors[1]['cell']=(8,7)
+        self.put(m, 1, (8,7))
         m.bombs[0]['fuse']=0
         m.tick(.01)
         self.assertFalse(m.bombs)
@@ -56,10 +62,10 @@ class SimulationTests(unittest.TestCase):
     def test_powerups_and_shield(self):
         m=self.fresh()
         for kind in ('bomb','fire','speed','kick','shield'):
-            m.actors[0]['cell']=(1,1)
+            self.put(m, 0, (1,1))
             m.actors[0]['cooldown']=0
             m.pickups[(2,1)]=kind
-            m.move(0,(1,0))
+            m.move(0,(1,0),m.actors[0]['move_time'])
         a=m.actors[0]
         self.assertEqual((a['capacity'],a['power']),(2,3))
         self.assertLess(a['move_time'],.17)
@@ -78,12 +84,13 @@ class SimulationTests(unittest.TestCase):
     def test_kick_bounce_and_fuse(self):
         m=self.fresh()
         a=m.actors[0]
-        a.update(cell=(3,5),kick=True)
+        self.put(m, 0, (3,5))
+        a['kick']=True
         m.place(0)
-        a['cell']=(2,5)
-        m.move(0,(1,0))
+        self.put(m, 0, (2,5))
+        m.move(0,(1,0),m.actors[0]['move_time'])
         self.assertEqual(m.bombs[0]['cell'],(4,5))
-        a['cell']=(2,3)
+        self.put(m, 0, (2,3))
         m.grid[5][5]=1
         m.tick(KICK_STEP)
         self.assertEqual(m.bombs[0]['cell'],(3,5))
@@ -95,7 +102,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_bot_escape(self):
         m=self.fresh()
-        m.actors[2]['cell']=(5,5)
+        self.put(m, 2, (5,5))
         m.grid[5][6]=2
         m.bot(2)
         self.assertEqual(len(m.bombs),1)
@@ -122,6 +129,66 @@ class SimulationTests(unittest.TestCase):
         snapshot=json.loads(json.dumps(m.snapshot()))
         self.assertEqual(snapshot['pickups'][0]['cell'],[3,3])
         self.assertEqual(snapshot['actors'][1]['name'],'Bob')
+
+    def test_continuous_movement_and_turns(self):
+        for rate in (30,60,120):
+            m=self.fresh()
+            for _ in range(rate): m.move(0,(1,0),1/rate)
+            self.assertAlmostEqual(m.actors[0]['position'][0],1+1/.17,places=5)
+        m=self.fresh()
+        m.move(0,(1,0))
+        point=m.actors[0]['position']
+        self.assertTrue(1 < point[0] < 1.2)
+        self.assertEqual(m.actors[0]['cell'],(1,1))
+        m.tick(.1)
+        self.assertEqual(m.actors[0]['position'],point)
+        m.move(0,(-1,0))
+        self.assertAlmostEqual(m.actors[0]['position'][0],1)
+        m.move(0,(1,0),.04)
+        point=m.actors[0]['position']
+        m.move(0,(0,1))
+        self.assertLessEqual(math.dist(point,m.actors[0]['position']),1/60/.17+.00001)
+        for _ in range(10): m.move(0,(0,1))
+        self.assertAlmostEqual(m.actors[0]['position'][0],1)
+        self.assertGreater(m.actors[0]['position'][1],1.5)
+
+    def test_continuous_collisions_and_fire(self):
+        for obstacle in (1,2):
+            m=self.fresh()
+            m.grid[1][3]=obstacle
+            m.move(0,(1,0),1.)
+            self.assertAlmostEqual(m.actors[0]['position'][0],2.22,places=3)
+            self.assertFalse(m.move(0,(1,0)))
+        m=self.fresh()
+        m.actors[1].update(cell=(3,1),position=(2.5,1.))
+        m.move(0,(1,0),.5)
+        self.assertAlmostEqual(m.actors[0]['position'][0],1.94,places=3)
+        m=self.fresh()
+        m.place(0)
+        m.move(0,(1,0),.17)
+        m.move(0,(-1,0),.17)
+        self.assertAlmostEqual(m.actors[0]['position'][0],1.58,places=3)
+        m=self.fresh()
+        m.flames[(2,1)]=.5
+        m.move(0,(1,0),.17)
+        self.assertFalse(m.actors[0]['alive'])
+        self.assertLess(m.actors[0]['position'][0],1.5)
+
+    def test_continuous_ai_and_snapshot(self):
+        m=self.fresh()
+        self.put(m,2,(5,5))
+        m.grid[5][6]=2
+        before=m.actors[2]['position']
+        m.bot(2)
+        self.assertGreater(math.dist(before,m.actors[2]['position']),0)
+        self.assertLess(math.dist(before,m.actors[2]['position']),.1)
+        for _ in range(30):
+            before=m.actors[2]['position']
+            m.tick(1/60)
+            m.bot(2)
+            self.assertLessEqual(math.dist(before,m.actors[2]['position']),1/60/m.actors[2]['move_time']+.00001)
+        snapshot=json.loads(json.dumps(m.snapshot()))
+        self.assertEqual(snapshot['actors'][2]['position'],list(m.actors[2]['position']))
 
 class LobbyTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

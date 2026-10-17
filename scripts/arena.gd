@@ -16,6 +16,9 @@ const FUSE := 2.4
 const FIRE_TIME := 0.65
 const SHIELD_GRACE := FIRE_TIME + 0.1
 const KICK_STEP := 0.065
+const ACTOR_RADIUS := 0.28
+const BOMB_RADIUS := 0.30
+const MOTION_STEP := 0.04
 const POWER_UPS := ["bomb", "fire", "speed", "kick", "shield"]
 const DIRECTIONS := [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
 var grid: Array = []
@@ -57,7 +60,7 @@ func start(seed_value: int, level: int = 1) -> void:
 			row.append(tile)
 		grid.append(row)
 	for id in 4:
-		actors.append({"id": id, "cell": spawns[id], "previous": spawns[id], "alive": true,
+		actors.append({"id": id, "cell": spawns[id], "previous": spawns[id], "position": Vector2(spawns[id]), "goal": null, "alive": true,
 			"cooldown": 0.0, "move_time": 0.17 if id == 0 else [0.42, 0.21, 0.17][level],
 			"capacity": 1, "power": 2, "bombs": 0, "kick": false, "shield": false, "invulnerable": 0.0, "bomb_cooldown": 0.0, "facing": Vector2i.DOWN})
 
@@ -76,32 +79,44 @@ func walkable(cell: Vector2i, actor_id: int = -1) -> bool:
 	if tile(cell) != EMPTY or bomb_at(cell) >= 0:
 		return false
 	for actor in actors:
-		if actor.alive and actor.id != actor_id and actor.cell == cell:
+		if actor.alive and actor.id != actor_id and _overlaps(actor.position, Vector2(cell), ACTOR_RADIUS * 2):
 			return false
 	return true
 
-func move_actor(id: int, direction: Vector2i) -> bool:
-	if finished or not DIRECTIONS.has(direction):
-		return false
-	var actor: Dictionary = actors[id]
-	if not actor.alive or actor.cooldown > 0.0:
-		return false
-	actor.facing = direction
-	var target: Vector2i = actor.cell + direction
-	var obstacle := bomb_at(target)
-	if obstacle >= 0 and actor.kick:
-		for other in actors:
-			if other.alive and other.id != id and other.cell == target:
-				return false
-		_kick_bomb(obstacle, direction)
-	if not walkable(target, id):
-		return false
-	actor.previous = actor.cell
-	actor.cell = target
-	actor.cooldown = actor.move_time
-	if flames.has(target):
-		_hit_by_fire(actor)
-	elif pickups.has(target):
+static func _overlaps(a: Vector2, b: Vector2, distance: float) -> bool:
+	return absf(a.x - b.x) < distance - 0.00001 and absf(a.y - b.y) < distance - 0.00001
+
+func _body_cells(point: Vector2) -> Array:
+	var result: Array = []
+	var low := Vector2i((point - Vector2.ONE * ACTOR_RADIUS + Vector2.ONE * 0.50001).floor())
+	var high := Vector2i((point + Vector2.ONE * ACTOR_RADIUS + Vector2.ONE * 0.49999).floor())
+	for y in range(low.y, high.y + 1):
+		for x in range(low.x, high.x + 1): result.append(Vector2i(x, y))
+	return result
+
+func _can_occupy(id: int, point: Vector2) -> bool:
+	for cell in _body_cells(point):
+		if tile(cell) != EMPTY: return false
+	for other in actors:
+		if other.alive and other.id != id and _overlaps(point, other.position, ACTOR_RADIUS * 2): return false
+	for bomb in bombs:
+		if not bomb.get("passers", []).has(id) and _overlaps(point, Vector2(bomb.cell), ACTOR_RADIUS + BOMB_RADIUS): return false
+	return true
+
+func _update_bomb_passers() -> void:
+	for bomb in bombs:
+		var allowed: Array = []
+		for id in bomb.get("passers", []):
+			if actors[id].alive and _overlaps(actors[id].position, Vector2(bomb.cell), ACTOR_RADIUS + BOMB_RADIUS): allowed.append(id)
+		bomb.passers = allowed
+
+func _touch_actor(actor: Dictionary) -> void:
+	for cell in _body_cells(actor.position):
+		if flames.has(cell):
+			_hit_by_fire(actor)
+			return
+	var target: Vector2i = actor.cell
+	if pickups.has(target):
 		var kind: String = pickups[target]
 		match kind:
 			"bomb": actor.capacity = mini(actor.capacity + 1, 5)
@@ -110,21 +125,71 @@ func move_actor(id: int, direction: Vector2i) -> bool:
 			"kick": actor.kick = true
 			"shield": actor.shield = true
 		pickups.erase(target)
-		collected.emit(id, kind)
-	return true
+		collected.emit(actor.id, kind)
+
+func move_actor(id: int, direction: Vector2i, delta: float = 1.0 / 60.0) -> bool:
+	if finished or not DIRECTIONS.has(direction) or delta <= 0.0:
+		return false
+	var actor: Dictionary = actors[id]
+	if not actor.alive: return false
+	_update_bomb_passers()
+	var moved := false
+	var distance: float = delta / actor.move_time
+	# Small swept steps prevent tunnelling through walls, bombs, actors or fire.
+	while distance > 0.000001 and actor.alive:
+		var step := minf(MOTION_STEP, distance)
+		var travel := Vector2(direction)
+		var point: Vector2 = actor.position
+		# Centerline assistance makes perpendicular turns smooth, without snapping.
+		var axis := 1 if direction.x != 0 else 0
+		var alignment := roundf(point[axis]) - point[axis]
+		if absf(alignment) > 0.00001:
+			travel = Vector2.ZERO
+			travel[axis] = signf(alignment)
+			step = minf(step, absf(alignment))
+		var target := point + travel * step
+		for index in bombs.size():
+			var bomb: Dictionary = bombs[index]
+			if actor.kick and not bomb.get("passers", []).has(id) and _overlaps(target, Vector2(bomb.cell), ACTOR_RADIUS + BOMB_RADIUS):
+				_kick_bomb(index, Vector2i(travel))
+		var blocked := not _can_occupy(id, target)
+		if blocked:
+			var low := 0.0
+			var high := step
+			for iteration in 12:
+				var middle := (low + high) / 2.0
+				if _can_occupy(id, point + travel * middle): low = middle
+				else: high = middle
+			if low < 0.000001: break
+			step = low
+			target = point + travel * step
+		actor.previous = actor.cell
+		actor.position = target
+		actor.cell = Vector2i(target.round())
+		actor.facing = Vector2i(travel)
+		distance -= step
+		moved = true
+		_update_bomb_passers()
+		_touch_actor(actor)
+		if blocked: break
+	return moved
 
 func place_bomb(id: int) -> bool:
 	var actor: Dictionary = actors[id]
 	if finished or not actor.alive or actor.bomb_cooldown > 0.0 or actor.bombs >= actor.capacity or bomb_at(actor.cell) >= 0:
 		return false
 	bombs.append({"cell": actor.cell, "owner": id, "power": actor.power, "fuse": FUSE,
-		"direction": Vector2i.ZERO, "motion_time": 0.0})
+		"direction": Vector2i.ZERO, "motion_time": 0.0,
+		"passers": actors.filter(func(a): return a.alive and _overlaps(a.position, Vector2(actor.cell), ACTOR_RADIUS + BOMB_RADIUS)).map(func(a): return a.id)})
 	actor.bombs += 1
 	actor.bomb_cooldown = 4.0 if id > 0 and difficulty == 0 else 0.0
 	return true
 
 func _bomb_blocked(cell: Vector2i) -> bool:
-	return not walkable(cell)
+	if tile(cell) != EMPTY or bomb_at(cell) >= 0: return true
+	for actor in actors:
+		if actor.alive and _overlaps(actor.position, Vector2(cell), ACTOR_RADIUS + BOMB_RADIUS): return true
+	return false
 
 func _kick_bomb(index: int, direction: Vector2i) -> void:
 	var bomb: Dictionary = bombs[index]
@@ -133,6 +198,7 @@ func _kick_bomb(index: int, direction: Vector2i) -> void:
 		return
 	bomb.cell = next
 	bomb.direction = direction
+	bomb.passers = []
 	bomb.motion_time = 0.0
 	if flames.has(next):
 		bomb.fuse = 0.0
@@ -221,9 +287,9 @@ func tick(delta: float) -> void:
 			index = 0
 		else:
 			index += 1
+	_update_bomb_passers()
 	for actor in actors:
-		if actor.alive and flames.has(actor.cell):
-			_hit_by_fire(actor)
+		if actor.alive: _touch_actor(actor)
 	var survivors: Array = actors.filter(func(a): return a.alive)
 	if survivors.size() <= 1 or not actors[0].alive or remaining <= 0.0:
 		finished = true
@@ -265,12 +331,19 @@ func _kill(actor: Dictionary) -> void:
 
 func apply_snapshot(state: Dictionary) -> void:
 	## Network snapshots are read-only presentation state; server owns online rules.
+	var displayed: Dictionary = {}
+	for actor in actors: displayed[actor.id] = actor.get("display_position", actor.position)
 	grid = state.grid.duplicate(true)
 	actors = state.actors.duplicate(true)
 	for actor in actors:
 		actor.cell = _wire_cell(actor.cell)
 		actor.previous = _wire_cell(actor.previous)
 		actor.facing = _wire_cell(actor.facing)
+		var coordinates: Array = actor.get("position", [actor.cell.x, actor.cell.y])
+		actor.position = Vector2(float(coordinates[0]), float(coordinates[1]))
+		actor.render_from = displayed.get(actor.id, actor.position) if actor.alive else actor.position
+		actor.display_position = actor.render_from
+		actor.render_elapsed = 0.0
 	bombs = state.bombs.duplicate(true)
 	for bomb in bombs:
 		bomb.cell = _wire_cell(bomb.cell)

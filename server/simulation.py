@@ -1,10 +1,18 @@
 """Authoritative multiplayer rules matching scripts/arena.gd; no client state is trusted."""
 import random
+import math
 from collections import deque
 
 DIRS = ((0, -1), (1, 0), (0, 1), (-1, 0))
 POWER_UPS = ("bomb", "fire", "speed", "kick", "shield")
 FUSE, FIRE_TIME, KICK_STEP, SHIELD_GRACE = 2.4, .65, .065, .75
+ACTOR_RADIUS, BOMB_RADIUS, MOTION_STEP = .28, .30, .04
+
+def overlaps(a, b, distance):
+    return all(abs(a[i]-b[i]) < distance - .00001 for i in (0,1))
+
+def cell_at(point):
+    return tuple(math.floor(v + .5) for v in point)
 
 def add(a, b, n=1):
     return (a[0] + b[0] * n, a[1] + b[1] * n)
@@ -29,7 +37,7 @@ class Match:
                 row.append(tile)
             self.grid.append(row)
         self.actors = [dict(id=i, name=players.get(i, ("TUX", "EMBER", "BYTE", "NOVA")[i]),
-                            cell=c, previous=c, alive=True, cooldown=0.,
+                            cell=c, previous=c, position=tuple(float(v) for v in c), goal=None, alive=True, cooldown=0.,
                             move_time=.17 if i in players else (.42, .21, .17)[difficulty],
                             capacity=1, power=2, bombs=0, kick=False, shield=False,
                             invulnerable=0., bomb_cooldown=0., facing=(0, 1))
@@ -43,41 +51,86 @@ class Match:
 
     def walkable(self, c, actor_id=-1):
         return self.tile(c) == 0 and self.bomb_at(c) is None and not any(
-            a['alive'] and a['id'] != actor_id and a['cell'] == c for a in self.actors)
+            a['alive'] and a['id'] != actor_id and overlaps(a['position'], c, ACTOR_RADIUS*2) for a in self.actors)
 
-    def move(self, actor_id, direction):
-        a = self.actors[actor_id]
-        if self.finished or not a['alive'] or a['cooldown'] > 0 or direction not in DIRS:
-            return False
-        target = add(a['cell'], direction)
-        a['facing'] = direction
-        bomb = self.bomb_at(target)
-        if bomb and a['kick'] and not any(o['alive'] and o['cell'] == target for o in self.actors):
-            dest = add(target, direction)
-            if self.walkable(dest):
-                bomb.update(cell=dest, direction=direction, motion_time=0.)
-                if dest in self.flames:
-                    bomb['fuse'] = 0.
-        if not self.walkable(target, actor_id):
-            return False
-        a.update(previous=a['cell'], cell=target, cooldown=a['move_time'])
-        if target in self.flames:
+    def body_cells(self, point):
+        low = [math.floor(v - ACTOR_RADIUS + .50001) for v in point]
+        high = [math.floor(v + ACTOR_RADIUS + .49999) for v in point]
+        return [(x,y) for y in range(low[1], high[1]+1) for x in range(low[0], high[0]+1)]
+
+    def can_occupy(self, actor_id, point):
+        return (all(self.tile(c) == 0 for c in self.body_cells(point))
+                and not any(a['alive'] and a['id'] != actor_id and overlaps(point, a['position'], ACTOR_RADIUS*2) for a in self.actors)
+                and not any(actor_id not in b.get('passers', []) and overlaps(point, b['cell'], ACTOR_RADIUS+BOMB_RADIUS) for b in self.bombs))
+
+    def update_passers(self):
+        for b in self.bombs:
+            b['passers'] = [i for i in b.get('passers', []) if self.actors[i]['alive'] and overlaps(self.actors[i]['position'], b['cell'], ACTOR_RADIUS+BOMB_RADIUS)]
+
+    def touch_actor(self, a):
+        if any(c in self.flames for c in self.body_cells(a['position'])):
             self.hit(a)
-        elif target in self.pickups:
-            kind = self.pickups.pop(target)
+            return
+        if a['cell'] in self.pickups:
+            kind = self.pickups.pop(a['cell'])
             if kind == 'bomb': a['capacity'] = min(5, a['capacity']+1)
             elif kind == 'fire': a['power'] = min(7, a['power']+1)
             elif kind == 'speed': a['move_time'] = max(.105, a['move_time']-.025)
             else: a[kind] = True
-            self.events.append(dict(type='pickup', actor=actor_id, kind=kind))
-        return True
+            self.events.append(dict(type='pickup', actor=a['id'], kind=kind))
+
+    def bomb_blocked(self, c):
+        return self.tile(c) != 0 or self.bomb_at(c) is not None or any(
+            a['alive'] and overlaps(a['position'], c, ACTOR_RADIUS+BOMB_RADIUS) for a in self.actors)
+
+    def move(self, actor_id, direction, dt=1/60):
+        a = self.actors[actor_id]
+        if self.finished or not a['alive'] or direction not in DIRS or dt <= 0:
+            return False
+        self.update_passers()
+        distance, moved = dt / a['move_time'], False
+        while distance > .000001 and a['alive']:
+            step, travel = min(MOTION_STEP, distance), direction
+            point = a['position']
+            axis = 1 if direction[0] else 0
+            alignment = math.floor(point[axis]+.5) - point[axis]
+            if abs(alignment) > .00001:
+                travel = [0,0]
+                travel[axis] = 1 if alignment > 0 else -1
+                travel = tuple(travel)
+                step = min(step, abs(alignment))
+            target = add(point, travel, step)
+            for b in self.bombs:
+                if a['kick'] and actor_id not in b.get('passers', []) and overlaps(target, b['cell'], ACTOR_RADIUS+BOMB_RADIUS):
+                    dest = add(b['cell'], travel)
+                    if not self.bomb_blocked(dest):
+                        b.update(cell=dest, direction=travel, motion_time=0., passers=[])
+                        if dest in self.flames: b['fuse'] = 0.
+            blocked = not self.can_occupy(actor_id, target)
+            if blocked:
+                low, high = 0., step
+                for _ in range(12):
+                    middle = (low+high)/2
+                    if self.can_occupy(actor_id, add(point, travel, middle)): low = middle
+                    else: high = middle
+                if low < .000001: break
+                step = low
+                target = add(point, travel, step)
+            a.update(previous=a['cell'], position=target, cell=cell_at(target), facing=travel)
+            distance -= step
+            moved = True
+            self.update_passers()
+            self.touch_actor(a)
+            if blocked: break
+        return moved
 
     def place(self, actor_id):
         a = self.actors[actor_id]
         if self.finished or not a['alive'] or a['bomb_cooldown'] > 0 or a['bombs'] >= a['capacity'] or self.bomb_at(a['cell']):
             return False
         self.bombs.append(dict(cell=a['cell'], owner=actor_id, power=a['power'], fuse=FUSE,
-                               direction=(0, 0), motion_time=0.))
+                               direction=(0, 0), motion_time=0.,
+                               passers=[o["id"] for o in self.actors if o["alive"] and overlaps(o["position"], a["cell"], ACTOR_RADIUS+BOMB_RADIUS)]))
         a['bombs'] += 1
         a['bomb_cooldown'] = 4. if actor_id not in self.humans and self.difficulty == 0 else 0.
         return True
@@ -116,10 +169,10 @@ class Match:
                 while b['motion_time'] >= KICK_STEP:
                     b['motion_time'] -= KICK_STEP
                     dest = add(b['cell'], b['direction'])
-                    if not self.walkable(dest):
+                    if self.bomb_blocked(dest):
                         b['direction'] = tuple(-v for v in b['direction'])
                         dest = add(b['cell'], b['direction'])
-                    if self.walkable(dest): b['cell'] = dest
+                    if not self.bomb_blocked(dest): b['cell'] = dest
                     if b['cell'] in self.flames:
                         b['fuse'] = 0.
                         break
@@ -139,8 +192,9 @@ class Match:
                     self.grid[c[1]][c[0]] = 0
                     if self.rng.random() < .38: self.pickups[c] = self.rng.choice(POWER_UPS)
             self.events.append(dict(type='explosion', cells=cells))
+        self.update_passers()
         for a in self.actors:
-            if a['cell'] in self.flames: self.hit(a)
+            if a['alive']: self.touch_actor(a)
         self.check_end()
 
     def check_end(self):
@@ -187,9 +241,12 @@ class Match:
                 queue.append((nxt, path+[nxt]))
         return []
 
-    def bot(self, actor_id):
+    def bot(self, actor_id, dt=1/60):
         a = self.actors[actor_id]
-        if not a['alive'] or a['cooldown'] > 0 or self.finished: return
+        if not a['alive'] or self.finished: return
+        if a['goal'] is not None:
+            self.follow(actor_id, dt)
+            return
         danger, origin = self.danger(), a['cell']
         if origin in danger:
             path = self.route(actor_id, danger, True)
@@ -203,10 +260,31 @@ class Match:
                 path = self.route(actor_id, hypothetical, True)
                 if path:
                     self.place(actor_id)
-                    self.move(actor_id, tuple(path[0][i]-origin[i] for i in (0,1)))
+                    a['goal'] = path[0]
+                    self.follow(actor_id, dt)
                     return
             path = self.route(actor_id, danger, False)
-        if path: self.move(actor_id, tuple(path[0][i]-origin[i] for i in (0,1)))
+        if path:
+            a['goal'] = path[0]
+            self.follow(actor_id, dt)
+
+    def follow(self, actor_id, dt):
+        a = self.actors[actor_id]
+        offset = tuple(a['goal'][i]-a['position'][i] for i in (0,1))
+        distance = math.hypot(*offset)
+        if distance < .00001:
+            a['goal'] = None
+            self.bot(actor_id, dt)
+            return
+        axis = 0 if abs(offset[0]) > abs(offset[1]) else 1
+        direction = [0,0]
+        direction[axis] = 1 if offset[axis] > 0 else -1
+        used = min(dt, distance * a['move_time'])
+        if not self.move(actor_id, tuple(direction), used):
+            a['goal'] = None
+        elif math.dist(a['goal'], a['position']) < .00001:
+            a['goal'] = None
+            if dt - used > .000001: self.bot(actor_id, dt - used)
 
     def snapshot(self):
         return dict(grid=self.grid, actors=self.actors, bombs=self.bombs,

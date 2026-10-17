@@ -290,7 +290,16 @@ Python's map RNG differs from Godot's; online clients receive the authoritative
 map rather than independently generating it. The shared rules are implemented in
 both runtimes, with regression tests for collisions, blasts, shields, kicking,
 AI, and end conditions. Any future rules change needs updates on both sides.
-Snapshots provide simple movement interpolation; client prediction/rollback is
+Players and bots have continuous, fractional positions; tiles remain the basis
+for bombs, crates, pickups, and AI routes. Collision checks sweep the player's
+body through its movement, including contact with flames and other contestants.
+Snapshots include each actor's `position` as two floating-point coordinates in
+tile units (integer coordinates are tile centers), alongside its nearest `cell`.
+The client interpolates those positions across the 50 ms snapshot interval.
+Update and restart the Python server along with updated clients to use these
+movement rules online; restarting ends active rooms.
+
+Client prediction/rollback is
 not implemented, so high-latency connections will feel less responsive than LAN.
 Room state is in memory and is lost if the server restarts.
 

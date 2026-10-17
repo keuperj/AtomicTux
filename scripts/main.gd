@@ -6,7 +6,10 @@ const Network = preload("res://scripts/network_client.gd")
 const OnlineUI = preload("res://scripts/multiplayer_ui.gd")
 const Sound = preload("res://scripts/sound.gd")
 const TUX = preload("res://assets/art/tux.png")
-const MOVE_CENTER := Vector2(1120, 580)
+const MOVE_CENTER := Vector2(1120, 620)
+const MOVE_RADIUS := 142.0
+const MOVE_TOUCH_RADIUS := 156.0
+const MOVE_TRAVEL := 88.0
 const BOMB_CENTER := Vector2(150, 580)
 const ICONS := {
 	"bomb": preload("res://assets/icons/bomb.svg"),
@@ -111,7 +114,7 @@ func _apply_layout(safe: Rect2) -> void:
 	position = safe.position
 	canvas_size = safe.size / ratio
 	layout_extra = canvas_size - Vector2(1280, 800)
-	var board_scale := minf((canvas_size.x - 580.0) / 692.0, (canvas_size.y - 204.0) / 588.0)
+	var board_scale := minf((canvas_size.x - 620.0) / 692.0, (canvas_size.y - 204.0) / 588.0)
 	var board_center := Vector2(canvas_size.x / 2.0, (108.0 + canvas_size.y - 68.0) / 2.0)
 	board_transform = Transform2D(0.0, Vector2.ONE * board_scale, 0.0, board_center - Vector2(640, 428) * board_scale)
 	online_ui.position = Vector2(220, 60) + Vector2(layout_extra.x / 2.0, 0)
@@ -213,7 +216,7 @@ func _input(event: InputEvent) -> void:
 
 func _pointer_down(id: int, point: Vector2) -> void:
 	if mode == "playing":
-		if point.distance_to(_move_center()) <= 114.0 and held.is_empty():
+		if point.distance_to(_move_center()) <= MOVE_TOUCH_RADIUS and held.is_empty():
 			_drag_pointer(id, point)
 			return
 		if point.distance_to(_bomb_center()) < 78.0:
@@ -225,7 +228,7 @@ func _pointer_down(id: int, point: Vector2) -> void:
 			return
 
 func _drag_pointer(id: int, point: Vector2) -> void:
-	stick_offset = (point - _move_center()).limit_length(64.0)
+	stick_offset = (point - _move_center()).limit_length(MOVE_TRAVEL)
 	held[id] = _pad_direction(point)
 
 func _release_pointer(id: int) -> void:
@@ -481,8 +484,8 @@ func _draw_board() -> void:
 		draw_circle(center, 12 + sin(clock*40)*3, Color("fff0af"))
 	for actor in arena.actors:
 		if not actor.alive: continue
-		var blend := 1.0 - clampf(actor.cooldown / actor.move_time, 0, 1)
-		var center := BOARD + Vector2(actor.previous).lerp(Vector2(actor.cell), minf(1.0, blend*2.5))*CELL + Vector2(26,26)+offset
+		var point: Vector2 = actor.get("display_position", actor.position) if online else actor.position
+		var center := BOARD + point * CELL + Vector2(26,26)+offset
 		if actor.shield or actor.invulnerable > 0.0:
 			var pulse: float = 0.7 + sin(clock * 18.0) * 0.3 if actor.invulnerable > 0.0 else 1.0
 			draw_circle(center,29,Color(0.47,0.87,1.0,0.12*pulse))
@@ -490,7 +493,7 @@ func _draw_board() -> void:
 			draw_texture_rect(ICONS.shield,Rect2(center+Vector2(13,-33),Vector2(18,18)),false,Color(1,1,1,pulse))
 		draw_circle(center+Vector2(0,15),21,Color(0,0,0,0.3))
 		draw_arc(center+Vector2(0,10),21,0,TAU,32,COLORS[actor.id],3,true)
-		var bob := sin(blend*PI)*3 if actor.cooldown > 0 else sin(clock*2+actor.id)*1.2
+		var bob := sin(clock * 2 + actor.id) * 1.2
 		draw_texture_rect(TUX,Rect2(center-Vector2(26,34+bob),Vector2(52,57)),false)
 		draw_circle(center+Vector2(0,-31-bob),5,COLORS[actor.id])
 	if mode == "dying":
@@ -500,8 +503,8 @@ func _draw_board() -> void:
 
 func _draw_death(offset: Vector2) -> void:
 	var progress := 1.0 - death_remaining / DEATH_DURATION
-	var center := BOARD + Vector2(arena.actors[local_actor_id].cell) * CELL + Vector2(26,26) + offset
-	# Mark the actual lethal tile, even if movement interpolation was mid-step.
+	var center := BOARD + Vector2(arena.actors[local_actor_id].position) * CELL + Vector2(26,26) + offset
+	# Show the exact position where the actor touched the blast.
 	draw_arc(center, 27 + sin(progress * PI) * 8, 0, TAU, 48, GOLD, 3, true)
 	var alpha := clampf(1.0 - progress * 1.5, 0.0, 1.0)
 	draw_set_transform_matrix(board_transform * Transform2D(progress * 1.2, center + Vector2(0, -progress * 30)))
@@ -521,18 +524,18 @@ func _draw_bomb(center: Vector2, radius: float, fuse: float) -> void:
 
 func _draw_controls() -> void:
 	var center := _move_center()
-	draw_circle(center, 100, Color("101e2e"))
-	draw_arc(center, 100, 0, TAU, 64, LINE, 2, true)
-	draw_arc(center, 65, 0, TAU, 64, Color("263c50"), 1, true)
+	draw_circle(center, MOVE_RADIUS, Color("101e2e"))
+	draw_arc(center, MOVE_RADIUS, 0, TAU, 64, LINE, 2, true)
+	draw_arc(center, MOVE_TRAVEL, 0, TAU, 64, Color("263c50"), 1, true)
 	for direction in Arena.DIRECTIONS:
-		var mark := center + Vector2(direction) * 85
+		var mark := center + Vector2(direction) * 123
 		draw_circle(mark, 3, TEAL if _direction() == direction and mode == "playing" else MUTED)
 	var knob := center + (stick_offset if not held.is_empty() else Vector2.ZERO)
-	draw_circle(knob + Vector2(0, 4), 34, Color(0, 0, 0, 0.25))
-	draw_circle(knob, 34, Color("294959"))
-	draw_arc(knob, 34, 0, TAU, 48, TEAL if not held.is_empty() else MUTED, 2, true)
+	draw_circle(knob + Vector2(0, 4), 46, Color(0, 0, 0, 0.25))
+	draw_circle(knob, 46, Color("294959"))
+	draw_arc(knob, 46, 0, TAU, 48, TEAL if not held.is_empty() else MUTED, 2, true)
 	draw_circle(knob, 6, TEAL)
-	_text_center(center + Vector2(0,130), "HOLD & SLIDE", 13, MUTED)
+	_text_center(center + Vector2(0,169), "HOLD & SLIDE", 13, MUTED)
 	var bomb := _bomb_center()
 	draw_circle(bomb,78,Color("493832"))
 	draw_circle(bomb + Vector2(0,-4),70,GOLD)
@@ -660,6 +663,7 @@ func _network_message(msg: Dictionary) -> void:
 			online_round = int(msg.round)
 			counted_online_round = -1
 			latest_snapshot = msg.state
+			arena.actors.clear()
 			arena.apply_snapshot(msg.state)
 			_update_online_names(msg.state)
 			countdown = float(msg.countdown)
@@ -716,7 +720,9 @@ func _process_online(delta: float) -> void:
 			death_remaining = maxf(0.0,death_remaining-delta)
 			if death_remaining <= 0.0: _show_results()
 	else:
-		for actor in arena.actors: actor.cooldown = maxf(0.0,actor.cooldown-delta)
+		for actor in arena.actors:
+			actor.render_elapsed = minf(0.05, actor.get("render_elapsed", 0.0) + delta)
+			actor.display_position = Vector2(actor.get("render_from", actor.position)).lerp(actor.position, actor.render_elapsed / 0.05)
 	input_elapsed += delta
 	if input_elapsed >= 0.05:
 		input_elapsed = 0.0

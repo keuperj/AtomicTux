@@ -80,7 +80,7 @@ func run() -> void:
 		check(board.position.y >= 108 and board.end.y <= game.canvas_size.y - 68, "Board fits vertically at %s" % dimensions)
 		check((game.canvas_size * game.scale).is_equal_approx(Vector2(dimensions)), "Canvas fills display at %s" % dimensions)
 		var move: Vector2 = game._move_center()
-		check(move.x + 114 < game.canvas_size.x and move.y + 114 < game.canvas_size.y, "Joystick fits at %s" % dimensions)
+		check(move.x + game.MOVE_TOUCH_RADIUS < game.canvas_size.x and move.y + game.MOVE_TOUCH_RADIUS < game.canvas_size.y, "Joystick fits at %s" % dimensions)
 		touch(game, 1, move, true)
 		drag(game, 1, move + Vector2(60,0))
 		check(game._direction() == Vector2i.RIGHT, "Touch coordinates follow resize at %s" % dimensions)

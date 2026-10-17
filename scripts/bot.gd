@@ -2,16 +2,20 @@ class_name TuxBot
 extends RefCounted
 ## Breadth-first routing with arrival-time checks and a pre-placement escape test.
 
-static func step(arena: TuxArena, id: int) -> void:
+static func step(arena: TuxArena, id: int, delta: float = 1.0 / 60.0) -> void:
 	var actor: Dictionary = arena.actors[id]
-	if not actor.alive or actor.cooldown > 0.0 or arena.finished:
+	if not actor.alive or arena.finished:
+		return
+	if actor.goal != null:
+		_follow(arena, id, delta)
 		return
 	var danger := arena.danger_map()
 	var origin: Vector2i = actor.cell
 	if danger.has(origin):
 		var escape := route(arena, id, danger, true)
 		if not escape.is_empty():
-			arena.move_actor(id, escape[0] - origin)
+			actor.goal = escape[0]
+			_follow(arena, id, delta)
 		return
 	var useful := false
 	for cell in arena.blast_cells(origin, actor.power):
@@ -27,11 +31,30 @@ static func step(arena: TuxArena, id: int) -> void:
 		var escape := route(arena, id, hypothetical, true)
 		if not escape.is_empty():
 			arena.place_bomb(id)
-			arena.move_actor(id, escape[0] - origin)
+			actor.goal = escape[0]
+			_follow(arena, id, delta)
 			return
 	var path := route(arena, id, danger, false)
 	if not path.is_empty():
-		arena.move_actor(id, path[0] - origin)
+		actor.goal = path[0]
+		_follow(arena, id, delta)
+
+static func _follow(arena: TuxArena, id: int, delta: float) -> void:
+	var actor: Dictionary = arena.actors[id]
+	var offset: Vector2 = Vector2(actor.goal) - actor.position
+	if offset.length() < 0.00001:
+		actor.goal = null
+		step(arena, id, delta)
+		return
+	var direction := Vector2i.ZERO
+	if absf(offset.x) > absf(offset.y): direction = Vector2i(int(signf(offset.x)), 0)
+	else: direction = Vector2i(0, int(signf(offset.y)))
+	var used := minf(delta, offset.length() * actor.move_time)
+	if not arena.move_actor(id, direction, used):
+		actor.goal = null
+	elif (Vector2(actor.goal) - actor.position).length() < 0.00001:
+		actor.goal = null
+		if delta - used > 0.000001: step(arena, id, delta - used)
 
 static func route(arena: TuxArena, id: int, danger: Dictionary, escape: bool) -> Array:
 	var actor: Dictionary = arena.actors[id]

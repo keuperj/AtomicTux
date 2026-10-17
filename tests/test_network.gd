@@ -66,6 +66,15 @@ func run() -> void:
 	game.set_process(false)
 	game._network_message(messages[1].started)
 	check(game.online and game.local_actor_id == 1 and game._actor_name(1) == "Bob","Game displays local name and actor correctly")
+	var motion: Dictionary = messages[1].started.duplicate(true)
+	motion.type = "snapshot"
+	motion.state.actors[1].position = [10.7, 9.0]
+	game._network_message(motion)
+	check(game.arena.actors[1].position.is_equal_approx(Vector2(10.7,9)), "Client preserves fractional authoritative positions")
+	game._process_online(.025)
+	check(game.arena.actors[1].display_position.is_equal_approx(Vector2(10.85,9)), "Online rendering interpolates between snapshots")
+	game._process_online(.025)
+	check(game.arena.actors[1].display_position.is_equal_approx(Vector2(10.7,9)), "Interpolation reaches the snapshot without tile snapping")
 	var deadline := Time.get_ticks_msec()+10000
 	while Time.get_ticks_msec() < deadline:
 		first.send_message({"type":"input","direction":[1,0],"bomb":false})

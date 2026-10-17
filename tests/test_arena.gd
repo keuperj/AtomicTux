@@ -10,6 +10,11 @@ func check(condition: bool, label: String) -> void:
 		failures += 1
 		push_error(label)
 
+func put(a: TuxArena, id: int, cell: Vector2i) -> void:
+	a.actors[id].cell = cell
+	a.actors[id].position = Vector2(cell)
+	a.actors[id].goal = null
+
 func fresh() -> TuxArena:
 	var arena := Arena.new()
 	arena.start(42)
@@ -30,15 +35,18 @@ func _initialize() -> void:
 		for direction in Arena.DIRECTIONS:
 			if a.walkable(actor.cell + direction, actor.id): exits += 1
 		check(exits >= 2, "Every spawn needs two exits")
-	check(not a.move_actor(0,Vector2i.LEFT), "Border collision")
-	check(not a.move_actor(0,Vector2i(1,1)), "No diagonal movement")
-	check(a.move_actor(0,Vector2i.RIGHT), "Valid move")
-	check(not a.move_actor(0,Vector2i.RIGHT), "Movement cooldown")
+	a.move_actor(0,Vector2i.LEFT,a.actors[0].move_time)
+	check(a.actors[0].position.x > 0.5 and not a.move_actor(0,Vector2i.LEFT), "Border collision stops the continuous body")
+	put(a, 0, Vector2i(1,1))
+	check(not a.move_actor(0,Vector2i(1,1),a.actors[0].move_time), "No diagonal movement")
+	check(a.move_actor(0,Vector2i.RIGHT,a.actors[0].move_time), "Valid move")
+	check(a.move_actor(0,Vector2i.RIGHT), "Continuous movement has no tile cooldown")
 	a = fresh()
 	check(a.place_bomb(0), "Plant bomb")
 	check(not a.place_bomb(0), "Capacity and duplicate placement")
-	check(a.move_actor(0,Vector2i.RIGHT), "Can leave own bomb")
+	check(a.move_actor(0,Vector2i.RIGHT,a.actors[0].move_time), "Can leave own bomb")
 	a.tick(0.2)
+	a.move_actor(0,Vector2i.LEFT,a.actors[0].move_time)
 	check(not a.move_actor(0,Vector2i.LEFT), "Cannot reenter bomb")
 	a = fresh()
 	a.grid[1][3] = Arena.CRATE
@@ -48,7 +56,7 @@ func _initialize() -> void:
 	check(not cells.has(Vector2i(4,1)), "Crate stops blast")
 	check(not cells.has(Vector2i(1,3)), "Wall stops blast")
 	a.place_bomb(0)
-	a.actors[0].cell = Vector2i(6,5)
+	put(a, 0, Vector2i(6,5))
 	a.tick(2.41)
 	check(a.grid[1][3] == Arena.EMPTY, "Crate destroyed")
 	check(a.actors[0].bombs == 0, "Capacity returned on explosion")
@@ -58,10 +66,10 @@ func _initialize() -> void:
 	a = fresh()
 	a.actors[0].power = 4
 	a.place_bomb(0)
-	a.actors[0].cell = Vector2i(8,5)
-	a.actors[1].cell = Vector2i(3,1)
+	put(a, 0, Vector2i(8,5))
+	put(a, 1, Vector2i(3,1))
 	a.place_bomb(1)
-	a.actors[1].cell = Vector2i(8,7)
+	put(a, 1, Vector2i(8,7))
 	a.bombs[0].fuse = 0.01
 	check(a.danger_map()[Vector2i(4,1)] < 0.02, "AI sees chain timing")
 	a.tick(0.02)
@@ -69,11 +77,11 @@ func _initialize() -> void:
 	check(a.flames.has(Vector2i(5,1)), "Chained blast reaches beyond triggering bomb")
 	a = fresh()
 	a.pickups[Vector2i(2,1)] = "bomb"
-	a.move_actor(0,Vector2i.RIGHT)
+	a.move_actor(0,Vector2i.RIGHT,a.actors[0].move_time)
 	check(a.actors[0].capacity == 2 and a.pickups.is_empty(), "Power-up collected")
 	a = fresh()
 	a.flames[Vector2i(2,1)] = 0.5
-	a.move_actor(0,Vector2i.RIGHT)
+	a.move_actor(0,Vector2i.RIGHT,a.actors[0].move_time)
 	check(not a.actors[0].alive, "Walking into flame kills player")
 	a.tick(0.01)
 	check(a.finished, "Player elimination ends solo round")
@@ -86,7 +94,7 @@ func _initialize() -> void:
 	a.tick(0.02)
 	check(a.finished and a.winner == -1, "Timeout is a draw")
 	a = fresh()
-	a.actors[1].cell = Vector2i(5,5)
+	put(a, 1, Vector2i(5,5))
 	a.grid[5][6] = Arena.CRATE
 	Bot.step(a,1)
 	check(a.bombs.size() == 1, "Bot plants against crate with escape")
@@ -95,7 +103,7 @@ func _initialize() -> void:
 		Bot.step(a,1)
 	check(a.actors[1].alive, "Bot escapes own bomb")
 	a = fresh()
-	a.actors[1].cell = Vector2i(5,5)
+	put(a, 1, Vector2i(5,5))
 	for direction in Arena.DIRECTIONS:
 		a.grid[5+direction.y][5+direction.x] = Arena.CRATE
 	Bot.step(a,1)

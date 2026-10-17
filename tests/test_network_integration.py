@@ -41,7 +41,7 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
                 env=os.environ.copy()
                 env.update(XDG_DATA_HOME=temp+'/data',XDG_CONFIG_HOME=temp+'/config',XDG_CACHE_HOME=temp+'/cache',
                            ATOMICTUX_TEST_PORT=str(port),ATOMICTUX_TEST_WRONG_CERT=str(Path(temp)/'other-certs'/'server.crt'),ATOMICTUX_TEST_FINGERPRINT=hashlib.sha256(ssl.PEM_cert_to_DER_cert(pem)).hexdigest().upper())
-                process=await asyncio.create_subprocess_exec(str(ROOT/'godot.sh'),'--headless','--script','tests/test_network.gd',
+                process=await asyncio.create_subprocess_exec(str(ROOT/'tools/godot/Godot_v4.6-stable_linux.x86_64'),'--path',str(ROOT),'--headless','--script','tests/test_network.gd',
                             cwd=ROOT,env=env,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.STDOUT)
                 try:
                     output,_=await asyncio.wait_for(process.communicate(),45)

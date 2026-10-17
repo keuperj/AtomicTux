@@ -10,6 +10,11 @@ func check(value: bool, message: String) -> void:
 		failures += 1
 		push_error(message)
 
+func put(a: TuxArena, id: int, cell: Vector2i) -> void:
+	a.actors[id].cell = cell
+	a.actors[id].position = Vector2(cell)
+	a.actors[id].goal = null
+
 func fresh() -> TuxArena:
 	var a := Arena.new()
 	a.start(42)
@@ -22,11 +27,11 @@ func _initialize() -> void:
 	var a := fresh()
 	check(Arena.POWER_UPS.has("shield"), "Shield is in crate drop pool")
 	a.pickups[Vector2i(2,1)] = "shield"
-	a.move_actor(0,Vector2i.RIGHT)
+	a.move_actor(0,Vector2i.RIGHT,a.actors[0].move_time)
 	check(a.actors[0].shield and a.pickups.is_empty(), "Pickup grants shield and disappears")
 	a.tick(0.2)
 	a.pickups[Vector2i(3,1)] = "shield"
-	a.move_actor(0,Vector2i.RIGHT)
+	a.move_actor(0,Vector2i.RIGHT,a.actors[0].move_time)
 	a.place_bomb(0)
 	a.bombs[0].fuse = 0.0
 	a.tick(0.01)
@@ -43,11 +48,11 @@ func _initialize() -> void:
 	a = fresh()
 	a.actors[0].shield = true
 	a.flames[Vector2i(2,1)] = 0.5
-	a.move_actor(0,Vector2i.RIGHT)
+	a.move_actor(0,Vector2i.RIGHT,a.actors[0].move_time)
 	check(a.actors[0].alive and not a.actors[0].shield, "Shield also absorbs walking into existing fire")
 	a.tick(0.2)
 	a.pickups[Vector2i(3,1)] = "shield"
-	a.move_actor(0,Vector2i.RIGHT)
+	a.move_actor(0,Vector2i.RIGHT,a.actors[0].move_time)
 	check(a.actors[0].shield, "Can replenish shield after consumption")
 	a.flames[Vector2i(3,1)] = 0.3
 	a.tick(0.1)
@@ -61,9 +66,9 @@ func _initialize() -> void:
 	a = fresh()
 	a.actors[0].shield = true
 	a.place_bomb(0)
-	a.actors[1].cell = Vector2i(3,1)
+	put(a, 1, Vector2i(3,1))
 	a.place_bomb(1)
-	a.actors[1].cell = Vector2i(9,9)
+	put(a, 1, Vector2i(9,9))
 	a.bombs[0].fuse = 0.0
 	a.tick(0.01)
 	check(a.bombs.is_empty() and a.actors[0].alive, "Shield handles overlapping chain reaction")
