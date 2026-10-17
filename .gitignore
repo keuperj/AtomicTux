@@ -1,0 +1,13 @@
+.godot/
+android/
+builds/*
+!builds/.gitkeep
+*.apk
+*.aab
+*.keystore
+export_credentials.cfg
+
+!builds/.gdignore
+
+# Project-local Godot editor binary.
+tools/godot/
