@@ -20,7 +20,7 @@ func run() -> void:
 	var game = load("res://scenes/main.tscn").instantiate()
 	root.add_child(game)
 	game.set_process(false)
-	game._pointer_down(0,Vector2(200,614))
+	game._pointer_down(0,game.buttons[1].rect.get_center())
 	check(game.mode == "network" and game.online_ui.visible,"Menu opens native multiplayer screen")
 	check(Input.emulate_mouse_from_touch,"Touch events reach native text fields and buttons")
 	var ui = game.online_ui

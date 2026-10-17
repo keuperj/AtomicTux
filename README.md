@@ -23,11 +23,24 @@ Command line: `godot --path .`
 
 | Action | Desktop | Android |
 | --- | --- | --- |
-| Move | WASD / arrow keys | Right directional pad |
+| Move | WASD / arrow keys | Right joystick: hold and slide |
 | Plant bomb | Space | Left gold button |
 | Pause | Escape / P | Pause button / Android Back |
 
-Movement and bomb touches work simultaneously. The game pauses when backgrounded.
+Touch the right joystick, then keep your finger down and slide to steer. Movement
+continues while held, even when your finger slides beyond the ring. Return to the
+center to stop temporarily or lift to release. Movement follows the arena's four
+grid directions. Another finger can drop bombs with the left button simultaneously.
+The game pauses when backgrounded and clears held touches.
+
+The landscape layout fills phone and tablet aspect ratios without stretching
+the artwork. The arena scales to the available space, controls anchor near the
+screen edges, and Android safe-area insets keep them clear of cutouts. Both
+landscape orientations are supported.
+
+Sound effects use cached variations of muted impacts, low explosion rumble,
+glass-like pickups, and a soft shield impact. Effects overlap without cutting
+each other off; rapid chain explosions are limited to avoid excessive loudness.
 Difficulty, sound preference, and lifetime wins are saved in Godot's `user://` directory.
 
 ## Rules
@@ -139,6 +152,10 @@ godot --headless --path . --script tests/test_shield.gd
 godot --headless --path . --script tests/test_kick.gd
 # Menu, touch, pause, backgrounding, and replay integration tests.
 godot --headless --path . --script tests/test_ui.gd
+# Continuous touch input, responsive layout, and cached audio effects.
+./godot.sh --headless --script tests/test_mobile.gd
+# Capture desktop-rendered phone/tablet previews and WAV sound samples in builds/.
+./godot.sh --script tests/test_mobile.gd
 # Run UI tests with rendering; saves builds/menu.png and builds/arena.png.
 godot --path . --script tests/test_ui.gd
 ```

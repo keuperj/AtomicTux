@@ -21,20 +21,20 @@ func run() -> void:
 	if DisplayServer.get_name() != "headless":
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png("res://builds/menu.png")
-	game._pointer_down(0, Vector2(200,480))
+	game._pointer_down(0, game.buttons[0].rect.get_center())
 	check(game.mode == "playing" and game.countdown == 3.0, "Play starts countdown")
 	game._bomb()
 	check(game.arena.bombs.is_empty(), "No bombs during countdown")
 	game.countdown = 0.0
 	var touch := InputEventScreenTouch.new()
 	touch.index = 0
-	touch.position = game.position + Vector2(1180,580) * game.scale
+	touch.position = game.position + (game._move_center() + Vector2(60,0)) * game.scale
 	touch.pressed = true
 	game._input(touch)
-	check(game._direction() == Vector2i.RIGHT, "Touch D-pad works")
+	check(game._direction() == Vector2i.RIGHT, "Touch joystick works")
 	var bomb_touch := InputEventScreenTouch.new()
 	bomb_touch.index = 1
-	bomb_touch.position = game.position + Vector2(150,580) * game.scale
+	bomb_touch.position = game.position + game._bomb_center() * game.scale
 	bomb_touch.pressed = true
 	game._input(bomb_touch)
 	check(game.arena.bombs.size() == 1 and game._direction() == Vector2i.RIGHT, "Simultaneous move and bomb touches")
@@ -69,7 +69,7 @@ func run() -> void:
 	var frozen_time: float = game.arena.remaining
 	var frozen_flames: Dictionary = game.arena.flames.duplicate()
 	game._bomb()
-	game._pointer_down(3,Vector2(1180,580))
+	game._pointer_down(3,(game._move_center() + Vector2(60,0)))
 	game._toggle_pause()
 	game._process(0.8)
 	check(game.mode == "dying" and game.held.is_empty(), "Input cannot interrupt death sequence")

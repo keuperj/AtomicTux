@@ -37,6 +37,10 @@ var accumulator := 0.0
 var countdown := 0.0
 var buttons: Array = []
 var held: Dictionary = {}
+var stick_offset := Vector2.ZERO
+var canvas_size := Vector2(1280, 800)
+var layout_extra := Vector2.ZERO
+var board_transform := Transform2D.IDENTITY
 var particles: Array = []
 var shake := 0.0
 var flash := ""
@@ -92,10 +96,36 @@ func _exit_tree() -> void:
 	sound.stream = null
 
 func _resize() -> void:
-	var size := get_viewport_rect().size
-	var ratio := minf(size.x / 1280.0, size.y / 800.0)
+	var viewport_size := get_viewport_rect().size
+	var safe := Rect2(Vector2.ZERO, viewport_size)
+	if OS.get_name() == "Android":
+		var pixels := Vector2(DisplayServer.window_get_size())
+		var screen_safe := Rect2(DisplayServer.get_display_safe_area())
+		if pixels.x > 0 and pixels.y > 0 and screen_safe.has_area():
+			safe = Rect2(screen_safe.position * viewport_size / pixels, screen_safe.size * viewport_size / pixels)
+	_apply_layout(safe)
+
+func _apply_layout(safe: Rect2) -> void:
+	var ratio := minf(safe.size.x / 1280.0, safe.size.y / 800.0)
 	scale = Vector2.ONE * ratio
-	position = (size - Vector2(1280, 800) * ratio) / 2.0
+	position = safe.position
+	canvas_size = safe.size / ratio
+	layout_extra = canvas_size - Vector2(1280, 800)
+	var board_scale := minf((canvas_size.x - 580.0) / 692.0, (canvas_size.y - 204.0) / 588.0)
+	var board_center := Vector2(canvas_size.x / 2.0, (108.0 + canvas_size.y - 68.0) / 2.0)
+	board_transform = Transform2D(0.0, Vector2.ONE * board_scale, 0.0, board_center - Vector2(640, 428) * board_scale)
+	online_ui.position = Vector2(220, 60) + Vector2(layout_extra.x / 2.0, 0)
+	online_ui.size = Vector2(840, canvas_size.y - 120)
+	held.clear()
+	stick_offset = Vector2.ZERO
+	_make_buttons()
+	queue_redraw()
+
+func _move_center() -> Vector2:
+	return MOVE_CENTER + layout_extra
+
+func _bomb_center() -> Vector2:
+	return BOMB_CENTER + Vector2(0, layout_extra.y)
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
@@ -170,24 +200,23 @@ func _input(event: InputEvent) -> void:
 				if mode == "menu" or (mode == "result" and not online): _start_match()
 	if event is InputEventScreenTouch:
 		var local: Vector2 = (event.position - position) / scale
-		if event.pressed: _pointer_down(event.index, local)
-		else: held.erase(event.index)
+		if event.pressed and not event.canceled: _pointer_down(event.index, local)
+		else: _release_pointer(event.index)
 	elif event is InputEventScreenDrag:
 		if held.has(event.index):
-			held[event.index] = _pad_direction((event.position - position) / scale)
+			_drag_pointer(event.index, (event.position - position) / scale)
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed: _pointer_down(-1, (event.position - position) / scale)
-		else: held.erase(-1)
+		else: _release_pointer(-1)
 	elif event is InputEventMouseMotion and held.has(-1):
-		held[-1] = _pad_direction((event.position - position) / scale)
+		_drag_pointer(-1, (event.position - position) / scale)
 
 func _pointer_down(id: int, point: Vector2) -> void:
 	if mode == "playing":
-		var direction := _pad_direction(point)
-		if direction != Vector2i.ZERO:
-			held[id] = direction
+		if point.distance_to(_move_center()) <= 114.0 and held.is_empty():
+			_drag_pointer(id, point)
 			return
-		if point.distance_to(BOMB_CENTER) < 78.0:
+		if point.distance_to(_bomb_center()) < 78.0:
 			_bomb()
 			return
 	for button in buttons:
@@ -195,9 +224,17 @@ func _pointer_down(id: int, point: Vector2) -> void:
 			button.action.call()
 			return
 
+func _drag_pointer(id: int, point: Vector2) -> void:
+	stick_offset = (point - _move_center()).limit_length(64.0)
+	held[id] = _pad_direction(point)
+
+func _release_pointer(id: int) -> void:
+	held.erase(id)
+	if held.is_empty(): stick_offset = Vector2.ZERO
+
 func _pad_direction(point: Vector2) -> Vector2i:
-	var offset := point - MOVE_CENTER
-	if offset.length() > 114.0 or offset.length() < 16.0:
+	var offset := point - _move_center()
+	if offset.length() < 20.0:
 		return Vector2i.ZERO
 	if absf(offset.x) > absf(offset.y): return Vector2i(signi(int(offset.x)), 0)
 	return Vector2i(0, signi(int(offset.y)))
@@ -305,15 +342,18 @@ func _make_buttons() -> void:
 		_button(Rect2(480, 517, 320, 48), "GAME LIST" if online else "MAIN MENU", _leave_online if online else _menu)
 
 func _button(rect: Rect2, label: String, action: Callable, primary: bool = false) -> void:
+	rect.position += Vector2(layout_extra.x, 0) if mode in ["playing", "spectating"] else layout_extra / 2.0
 	buttons.append({"rect": rect, "label": label, "action": action, "primary": primary})
 
 func _draw() -> void:
-	draw_rect(Rect2(0, 0, 1280, 800), INK)
+	draw_rect(Rect2(-position / scale, get_viewport_rect().size / scale), INK)
 	for i in 65:
-		var p := Vector2(fmod(i * 193.7, 1280), fmod(i * 97.3, 800))
+		var p := Vector2(fmod(i * 193.7, canvas_size.x), fmod(i * 97.3, canvas_size.y))
 		draw_circle(p, 1.0, Color(0.3, 0.7, 0.8, 0.08 + 0.06 * sin(clock + i)))
 	if mode == "menu":
+		draw_set_transform(layout_extra / 2.0)
 		_draw_menu()
+		draw_set_transform(Vector2.ZERO)
 	elif mode == "network":
 		pass
 	else:
@@ -352,6 +392,7 @@ func _draw_menu() -> void:
 	_text(Vector2(947, 758), "SOLO ARENA   •   v0.1", 14, TEAL)
 
 func _draw_match() -> void:
+	draw_set_transform(Vector2(layout_extra.x / 2.0, 0))
 	_text(Vector2(48, 68), "AtomicTux", 32, WHITE)
 	_text(Vector2(305, 55), "ONLINE ARENA" if online else "SOLO ARENA", 14, TEAL)
 	_text(Vector2(305, 82), "THE CIRCUIT GARDEN", 20, WHITE)
@@ -360,8 +401,11 @@ func _draw_match() -> void:
 	_text(Vector2(822, 57), "SURVIVORS", 12, MUTED)
 	var alive := arena.actors.filter(func(a): return a.alive).size()
 	_text(Vector2(842, 86), "%d / 4" % alive, 27, TEAL)
-	draw_line(Vector2(48, 108), Vector2(1232, 108), LINE, 1)
+	draw_set_transform(Vector2.ZERO)
+	draw_line(Vector2(48, 108), Vector2(canvas_size.x - 48, 108), LINE, 1)
+	draw_set_transform_matrix(board_transform)
 	_draw_board()
+	draw_set_transform(Vector2.ZERO)
 	_text(Vector2(48, 161), "THE LINEUP", 14, MUTED)
 	for id in 4:
 		var actor: Dictionary = arena.actors[id]
@@ -371,6 +415,7 @@ func _draw_match() -> void:
 		draw_circle(Vector2(104, y + 39), 5, COLORS[id] if actor.alive else MUTED)
 		_text(Vector2(119, y+25), _actor_name(id).left(14), 17, COLORS[id] if actor.alive else MUTED)
 		_text(Vector2(119, y+43), ("YOU" if id == local_actor_id else "ONLINE PLAYER" if online and human_slots.has(id) else "AI / " + ["RELAXED", "NORMAL", "FIERCE"][arena.difficulty]) if actor.alive else "ELIMINATED", 11, MUTED)
+	draw_set_transform(Vector2(layout_extra.x, 0))
 	_text(Vector2(1010, 162), "YOUR LOADOUT", 14, MUTED)
 	var player: Dictionary = arena.actors[local_actor_id]
 	_stat(191, "BOMBS", "%d / %d" % [player.capacity - player.bombs, player.capacity], TEAL, "bomb")
@@ -382,13 +427,18 @@ func _draw_match() -> void:
 	_panel(Rect2(1124,440,108,35),PANEL,LINE,8)
 	draw_texture_rect(ICONS.shield,Rect2(1128,443,29,29),false)
 	_text(Vector2(1162,463),"SHIELD 1" if player.shield else "SHIELD 0",11,Color("79dfff") if player.shield else MUTED)
+	draw_set_transform(Vector2.ZERO)
 	_draw_controls()
+	draw_set_transform(Vector2(layout_extra.x / 2.0, layout_extra.y))
 	_text_center(Vector2(640, 751), "SPECTATING — THE ROUND IS STILL RUNNING" if mode == "spectating" else flash if flash_time > 0 else "BREAK CRATES. GRAB UPGRADES. WATCH THE FUSE.", 15, GOLD if flash_time > 0 else MUTED)
 	_text_center(Vector2(640, 778), "WASD / ARROWS   move     •     SPACE   bomb     •     ESC   pause", 12, MUTED)
+	draw_set_transform(Vector2.ZERO)
 	if countdown > 0 and mode == "playing":
+		draw_set_transform_matrix(board_transform)
 		draw_rect(Rect2(BOARD, Vector2(676, 572)), Color(0.02,0.06,0.1,0.55))
 		_text_center(Vector2(640, 414), str(ceili(countdown)), 100, TEAL)
 		_text_center(Vector2(640, 462), "GET READY", 20, WHITE)
+		draw_set_transform(Vector2.ZERO)
 
 func _draw_board() -> void:
 	var offset := Vector2(sin(clock * 100), cos(clock * 83)) * shake
@@ -454,9 +504,9 @@ func _draw_death(offset: Vector2) -> void:
 	# Mark the actual lethal tile, even if movement interpolation was mid-step.
 	draw_arc(center, 27 + sin(progress * PI) * 8, 0, TAU, 48, GOLD, 3, true)
 	var alpha := clampf(1.0 - progress * 1.5, 0.0, 1.0)
-	draw_set_transform(center + Vector2(0, -progress * 30), progress * 1.2)
+	draw_set_transform_matrix(board_transform * Transform2D(progress * 1.2, center + Vector2(0, -progress * 30)))
 	draw_texture_rect(TUX, Rect2(-26,-34,52,57), false, Color(1,0.8,0.7,alpha))
-	draw_set_transform(Vector2.ZERO)
+	draw_set_transform_matrix(board_transform)
 
 func _draw_bomb(center: Vector2, radius: float, fuse: float) -> void:
 	var pulse := 1.0 + sin(clock*(12 if fuse < 1.0 else 5))*0.07
@@ -470,24 +520,25 @@ func _draw_bomb(center: Vector2, radius: float, fuse: float) -> void:
 		draw_arc(center,radius+4,-PI/2,-PI/2+TAU*clampf(fuse/Arena.FUSE,0,1),32,TEAL if fuse>1 else Color("ff7d64"),2,true)
 
 func _draw_controls() -> void:
-	var center := MOVE_CENTER
-	draw_circle(center,100,Color("101e2e"))
-	draw_arc(center,100,0,TAU,64,LINE,2,true)
+	var center := _move_center()
+	draw_circle(center, 100, Color("101e2e"))
+	draw_arc(center, 100, 0, TAU, 64, LINE, 2, true)
+	draw_arc(center, 65, 0, TAU, 64, Color("263c50"), 1, true)
 	for direction in Arena.DIRECTIONS:
-		var rect := Rect2(center+Vector2(direction)*61-Vector2(27,27),Vector2(54,54))
-		var active: bool = _direction() == direction and mode == "playing"
-		_panel(rect,TEAL.darkened(0.6) if active else Color("213448"),TEAL if active else LINE,12)
-		var tip := rect.get_center()+Vector2(direction)*10
-		var base := rect.get_center()-Vector2(direction)*6
-		var perpendicular := Vector2(-direction.y,direction.x)*8
-		draw_colored_polygon(PackedVector2Array([tip,base+perpendicular,base-perpendicular]),TEAL if active else WHITE)
-	draw_circle(center,9,Color("365065"))
-	_text_center(MOVE_CENTER + Vector2(0,130), "MOVE", 13, MUTED)
-	draw_circle(BOMB_CENTER,78,Color("493832"))
-	draw_circle(BOMB_CENTER + Vector2(0,-4),70,GOLD)
-	_draw_bomb(BOMB_CENTER + Vector2(0,-13),25,1.5)
-	_text_center(BOMB_CENTER + Vector2(0,39),"DROP",16,INK)
-	_text_center(BOMB_CENTER + Vector2(0,130),"BOMB / SPACE",13,MUTED)
+		var mark := center + Vector2(direction) * 85
+		draw_circle(mark, 3, TEAL if _direction() == direction and mode == "playing" else MUTED)
+	var knob := center + (stick_offset if not held.is_empty() else Vector2.ZERO)
+	draw_circle(knob + Vector2(0, 4), 34, Color(0, 0, 0, 0.25))
+	draw_circle(knob, 34, Color("294959"))
+	draw_arc(knob, 34, 0, TAU, 48, TEAL if not held.is_empty() else MUTED, 2, true)
+	draw_circle(knob, 6, TEAL)
+	_text_center(center + Vector2(0,130), "HOLD & SLIDE", 13, MUTED)
+	var bomb := _bomb_center()
+	draw_circle(bomb,78,Color("493832"))
+	draw_circle(bomb + Vector2(0,-4),70,GOLD)
+	_draw_bomb(bomb + Vector2(0,-13),25,1.5)
+	_text_center(bomb + Vector2(0,39),"DROP",16,INK)
+	_text_center(bomb + Vector2(0,130),"BOMB / SPACE",13,MUTED)
 
 func _stat(y: float, label: String, value: String, color: Color, kind: String) -> void:
 	_panel(Rect2(1010,y,222,69),PANEL,LINE,10)
@@ -496,7 +547,8 @@ func _stat(y: float, label: String, value: String, color: Color, kind: String) -
 	_text(Vector2(1028,y+53),value,24,color)
 
 func _draw_overlay() -> void:
-	draw_rect(Rect2(0,0,1280,800),Color(0.02,0.04,0.07,0.85))
+	draw_rect(Rect2(-position / scale, get_viewport_rect().size / scale),Color(0.02,0.04,0.07,0.85))
+	draw_set_transform(layout_extra / 2.0)
 	_panel(Rect2(421,204,438,418),PANEL,LINE,24)
 	if mode == "paused":
 		_text_center(Vector2(640,274),"TAKE A BREATHER",14,TEAL)
@@ -509,6 +561,8 @@ func _draw_overlay() -> void:
 		_text_center(Vector2(640,325),"Victory!" if won else "Time's up!" if draw_game else "Oh, Tux.",48,TEAL if won else GOLD)
 		_text_center(Vector2(640,370),(_actor_name(arena.winner) + " wins!") if online and arena.winner >= 0 else "Last penguin standing." if won else "The arena ends in a draw." if draw_game else "Caught in the chain reaction.",18,WHITE)
 		_text_center(Vector2(640,408),"SESSION  %d WINS / %d ROUNDS" % [victories,rounds],14,MUTED)
+
+	draw_set_transform(Vector2.ZERO)
 
 func _panel(rect: Rect2, fill: Color, border: Color, radius: int) -> void:
 	var key := "%s/%s/%d" % [fill.to_html(), border.to_html(), radius]
@@ -545,7 +599,7 @@ func _on_shield_absorbed(id: int) -> void:
 	if id == local_actor_id:
 		flash = "SHIELD ABSORBED THE BLAST — MOVE!"
 		flash_time = 2.0
-		sound.play_effect("pickup")
+		sound.play_effect("shield")
 
 func _load_settings() -> void:
 	var config := ConfigFile.new()
