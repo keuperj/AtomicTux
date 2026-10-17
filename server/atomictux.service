@@ -1,0 +1,30 @@
+[Unit]
+Description=AtomicTux multiplayer server
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=atomictux
+Group=atomictux
+WorkingDirectory=/opt/atomictux
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/atomictux/.venv/bin/python -u /opt/atomictux/server/server.py --host 0.0.0.0 --port 8081 --cert-dir /var/lib/atomictux/certs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+UMask=0077
+StateDirectory=atomictux
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -2,7 +2,7 @@
 
 Little penguins. Big chain reactions.
 
-An open-source, single-player bomb arena game built with **Godot 4.6**, designed
+An open-source, single-player and online multiplayer bomb arena game built with **Godot 4.6**, designed
 for landscape Android phones and also playable on desktop. Inspired by classic
 Bomberman gameplay, with original code, generated Tux-inspired artwork, and a
 teal-and-copper arena. Released under the MIT license.
@@ -47,7 +47,7 @@ Difficulty, sound preference, and lifetime wins are saved in Godot's `user://` d
 ## Android export
 
 An `Android` export preset is included for ARMv7 and ARM64, with landscape
-orientation, the Compatibility renderer, immersive display, and no network permission.
+orientation, the Compatibility renderer, immersive display, and Internet permission for multiplayer.
 
 1. Install the **Godot 4.6 export templates** via Editor → Manage Export Templates.
 2. Install **OpenJDK 17** and the Android SDK. Set Java SDK Path and Android SDK Path in Godot's editor settings.
@@ -92,14 +92,25 @@ godot --path . --script tests/test_ui.gd
 - `assets/art/tux.png`: generated transparent mascot used in the title and arena.
 - `docs/ART.md`: generation prompt and asset provenance.
 
-## Multiplayer later
+## Online multiplayer
 
-This milestone contains **no online multiplayer**. Simulation is separate from
-presentation and accepts actor IDs plus movement/bomb commands, with a seeded
-map generator. A future authoritative host can validate those commands and
-broadcast snapshots. Actor dictionaries are internal state, not a network
-protocol. A multiplayer implementation still needs command sequencing, state
-serialization, synchronization, connection UX, and networking tests.
+Start the Python server, then choose **Multiplayer** in the game:
 
-Current scope: one arena theme, one round format, four contestants, generated
-front-facing sprites with procedural movement animation, and synthesized effects.
+```sh
+python3 -m pip install -r server/requirements.txt
+python3 server/server.py --host 0.0.0.0 --port 8081
+```
+
+The default client address is **92.205.18.100:8081**; previously saved addresses
+take precedence. Enter your name, server IP, and port. On first connection, verify the certificate
+fingerprint shown in the server terminal. Browse or create a waiting game; the
+owner can start with any number of players and AI fills the remaining slots.
+After each round, stay for another round or return to the game list.
+
+The server automatically generates and reuses self-signed TLS certificates.
+See [multiplayer setup and protocol notes](docs/MULTIPLAYER.md) for installation,
+certificate trust, disconnect behavior, testing, and deployment details.
+
+Current scope: one arena theme, four contestants, single-player or server-hosted
+online rooms, five power-ups, generated penguins with procedural animation, and
+synthesized effects. Android APK export/device testing remains outstanding.

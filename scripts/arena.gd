@@ -262,3 +262,28 @@ func _kill(actor: Dictionary) -> void:
 		return
 	actor.alive = false
 	eliminated.emit(actor.id)
+
+func apply_snapshot(state: Dictionary) -> void:
+	## Network snapshots are read-only presentation state; server owns online rules.
+	grid = state.grid.duplicate(true)
+	actors = state.actors.duplicate(true)
+	for actor in actors:
+		actor.cell = _wire_cell(actor.cell)
+		actor.previous = _wire_cell(actor.previous)
+		actor.facing = _wire_cell(actor.facing)
+	bombs = state.bombs.duplicate(true)
+	for bomb in bombs:
+		bomb.cell = _wire_cell(bomb.cell)
+		bomb.direction = _wire_cell(bomb.direction)
+	flames.clear()
+	for entry in state.flames: flames[_wire_cell(entry.cell)] = float(entry.time)
+	pickups.clear()
+	for entry in state.pickups: pickups[_wire_cell(entry.cell)] = str(entry.kind)
+	remaining = float(state.remaining)
+	elapsed = float(state.elapsed)
+	finished = bool(state.finished)
+	winner = int(state.winner)
+	difficulty = int(state.difficulty)
+
+static func _wire_cell(value: Array) -> Vector2i:
+	return Vector2i(int(value[0]),int(value[1]))

@@ -11,3 +11,7 @@ export_credentials.cfg
 
 # Project-local Godot editor binary.
 tools/godot/
+
+server/certs/
+__pycache__/
+.venv/

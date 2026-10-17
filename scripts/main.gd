@@ -2,6 +2,8 @@ extends Node2D
 
 const Arena = preload("res://scripts/arena.gd")
 const Bot = preload("res://scripts/bot.gd")
+const Network = preload("res://scripts/network_client.gd")
+const OnlineUI = preload("res://scripts/multiplayer_ui.gd")
 const Sound = preload("res://scripts/sound.gd")
 const TUX = preload("res://assets/art/tux.png")
 const MOVE_CENTER := Vector2(1120, 580)
@@ -47,18 +49,35 @@ var match_seed := 0
 var panel_styles: Dictionary = {}
 var death_remaining := 0.0
 var foreground := true
+var network := Network.new()
+var online_ui := OnlineUI.new()
+var online := false
+var local_actor_id := 0
+var network_names: Array = []
+var human_slots: Array = []
+var latest_snapshot: Dictionary = {}
+var input_elapsed := 0.0
+var online_round := 0
+var counted_online_round := -1
 
 func _ready() -> void:
 	get_tree().quit_on_go_back = false
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	add_child(sound)
 	_load_settings()
+	add_child(network)
+	add_child(online_ui)
+	online_ui.setup(network)
+	online_ui.hide()
+	online_ui.back_requested.connect(_menu)
+	network.message_received.connect(_network_message)
+	network.disconnected.connect(_network_disconnected)
 	arena.exploded.connect(_on_exploded)
 	arena.collected.connect(_on_collected)
 	arena.shield_absorbed.connect(_on_shield_absorbed)
 	arena.eliminated.connect(func(id):
-		if id != 0:
-			flash = NAMES[id] + " eliminated"
+		if id != local_actor_id:
+			flash = _actor_name(id) + " eliminated"
 			flash_time = 1.8)
 	get_viewport().size_changed.connect(_resize)
 	_resize()
@@ -82,6 +101,7 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
 		foreground = false
 		held.clear()
+		if online: network.send_message({"type":"input","direction":[0,0],"bomb":false})
 		if mode == "playing":
 			mode = "paused"
 			_make_buttons()
@@ -91,6 +111,9 @@ func _notification(what: int) -> void:
 		_toggle_pause()
 
 func _process(delta: float) -> void:
+	if online:
+		_process_online(delta)
+		return
 	if mode == "dying" and not foreground:
 		return
 	clock += delta
@@ -118,8 +141,8 @@ func _process(delta: float) -> void:
 					break
 				var direction := _direction()
 				if direction != Vector2i.ZERO:
-					arena.move_actor(0, direction)
-				if not arena.actors[0].alive:
+					arena.move_actor(local_actor_id, direction)
+				if not arena.actors[local_actor_id].alive:
 					arena.tick(0.0)
 					_finish()
 					break
@@ -138,12 +161,13 @@ func _direction() -> Vector2i:
 	return Vector2i.ZERO
 
 func _input(event: InputEvent) -> void:
+	if mode == "network": return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
 			KEY_SPACE: _bomb()
 			KEY_ESCAPE, KEY_P: _toggle_pause()
 			KEY_ENTER:
-				if mode == "menu" or mode == "result": _start_match()
+				if mode == "menu" or (mode == "result" and not online): _start_match()
 	if event is InputEventScreenTouch:
 		var local: Vector2 = (event.position - position) / scale
 		if event.pressed: _pointer_down(event.index, local)
@@ -179,7 +203,12 @@ func _pad_direction(point: Vector2) -> Vector2i:
 	return Vector2i(0, signi(int(offset.y)))
 
 func _bomb() -> void:
-	if mode == "playing" and countdown <= 0.0 and arena.place_bomb(0):
+	if online:
+		if mode == "playing" and countdown <= 0.0 and foreground:
+			var direction := _direction()
+			network.send_message({"type":"input","direction":[direction.x,direction.y],"bomb":true})
+		return
+	if mode == "playing" and countdown <= 0.0 and arena.place_bomb(local_actor_id):
 		sound.play_effect("place")
 
 func _toggle_pause() -> void:
@@ -189,6 +218,10 @@ func _toggle_pause() -> void:
 	_make_buttons()
 
 func _start_match() -> void:
+	online = false
+	local_actor_id = 0
+	online_ui.hide()
+	Input.emulate_mouse_from_touch = false
 	match_seed = randi()
 	arena.start(match_seed, level)
 	mode = "playing"
@@ -201,7 +234,7 @@ func _start_match() -> void:
 	_make_buttons()
 
 func _finish() -> void:
-	if not arena.actors[0].alive:
+	if not arena.actors[local_actor_id].alive:
 		# Keep the lethal blast and final positions visible; only visuals advance.
 		mode = "dying"
 		death_remaining = DEATH_DURATION
@@ -213,16 +246,29 @@ func _finish() -> void:
 		_show_results()
 
 func _show_results() -> void:
+	if online:
+		if not latest_snapshot.is_empty(): arena.apply_snapshot(latest_snapshot)
+		if not arena.finished:
+			mode = "spectating"
+			_make_buttons()
+			return
+		if counted_online_round == online_round: return
+		counted_online_round = online_round
 	mode = "result"
 	held.clear()
 	rounds += 1
-	if arena.winner == 0:
+	if arena.winner == local_actor_id:
 		victories += 1
 		best += 1
 		_save_settings()
 	_make_buttons()
 
 func _menu() -> void:
+	if online: network.send_message({"type":"leave"})
+	online = false
+	local_actor_id = 0
+	online_ui.hide()
+	Input.emulate_mouse_from_touch = false
 	mode = "menu"
 	held.clear()
 	arena.start(42813, level)
@@ -243,6 +289,7 @@ func _make_buttons() -> void:
 	buttons.clear()
 	if mode == "menu":
 		_button(Rect2(80, 450, 360, 64), "PLAY SOLO   →", _start_match, true)
+		_button(Rect2(80, 590, 360, 48), "MULTIPLAYER   →", _open_network)
 		_button(Rect2(80, 528, 218, 48), "AI: " + ["RELAXED", "NORMAL", "FIERCE"][level], _cycle_level)
 		_button(Rect2(310, 528, 130, 48), "SOUND " + ("OFF" if muted else "ON"), _mute)
 	elif mode == "playing":
@@ -250,10 +297,12 @@ func _make_buttons() -> void:
 	elif mode == "paused":
 		_button(Rect2(480, 403, 320, 56), "RESUME   →", _toggle_pause, true)
 		_button(Rect2(480, 473, 320, 48), "SOUND " + ("OFF" if muted else "ON"), _mute)
-		_button(Rect2(480, 535, 320, 48), "MAIN MENU", _menu)
+		_button(Rect2(480, 535, 320, 48), "LEAVE GAME" if online else "MAIN MENU", _leave_online if online else _menu)
+	elif mode == "spectating":
+		_button(Rect2(1090,37,142,44), "LEAVE GAME", _leave_online)
 	elif mode == "result":
-		_button(Rect2(480, 443, 320, 58), "PLAY AGAIN   →", _start_match, true)
-		_button(Rect2(480, 517, 320, 48), "MAIN MENU", _menu)
+		_button(Rect2(480, 443, 320, 58), "ANOTHER ROUND   →" if online else "PLAY AGAIN   →", _online_rematch if online else _start_match, true)
+		_button(Rect2(480, 517, 320, 48), "GAME LIST" if online else "MAIN MENU", _leave_online if online else _menu)
 
 func _button(rect: Rect2, label: String, action: Callable, primary: bool = false) -> void:
 	buttons.append({"rect": rect, "label": label, "action": action, "primary": primary})
@@ -265,6 +314,8 @@ func _draw() -> void:
 		draw_circle(p, 1.0, Color(0.3, 0.7, 0.8, 0.08 + 0.06 * sin(clock + i)))
 	if mode == "menu":
 		_draw_menu()
+	elif mode == "network":
+		pass
 	else:
 		_draw_match()
 		if mode == "paused" or mode == "result": _draw_overlay()
@@ -281,9 +332,9 @@ func _draw_menu() -> void:
 	_text(Vector2(80, 296), "Tux", 104, TEAL)
 	_text(Vector2(83, 348), "Little penguins. Big chain reactions.", 23, WHITE)
 	_text(Vector2(83, 389), "Outsmart three bots. Be the last Tux standing.", 18, MUTED)
-	_text(Vector2(83, 624), "01   DROP       02   DODGE       03   DOMINATE", 15, TEAL)
-	_text(Vector2(83, 661), "WASD / arrows to move · Space to drop a bomb", 16, MUTED)
-	_text(Vector2(83, 687), "Playing on a phone? Use the pad and bomb button.", 16, MUTED)
+	_text(Vector2(83, 669), "01   DROP       02   DODGE       03   DOMINATE", 15, TEAL)
+	_text(Vector2(83, 702), "WASD / arrows to move · Space to drop a bomb", 16, MUTED)
+	_text(Vector2(83, 727), "Playing on a phone? Use the pad and bomb button.", 16, MUTED)
 	_panel(Rect2(572, 111, 628, 577), Color("0d2130"), LINE, 28)
 	for y in 7:
 		for x in 8:
@@ -302,7 +353,7 @@ func _draw_menu() -> void:
 
 func _draw_match() -> void:
 	_text(Vector2(48, 68), "AtomicTux", 32, WHITE)
-	_text(Vector2(305, 55), "SOLO ARENA", 14, TEAL)
+	_text(Vector2(305, 55), "ONLINE ARENA" if online else "SOLO ARENA", 14, TEAL)
 	_text(Vector2(305, 82), "THE CIRCUIT GARDEN", 20, WHITE)
 	var seconds := ceili(arena.remaining)
 	_text_center(Vector2(640, 73), "%02d:%02d" % [seconds / 60, seconds % 60], 34, GOLD if seconds < 30 else WHITE)
@@ -315,13 +366,13 @@ func _draw_match() -> void:
 	for id in 4:
 		var actor: Dictionary = arena.actors[id]
 		var y := 187.0 + id * 66
-		_panel(Rect2(46, y, 222, 56), PANEL, TEAL if id == 0 else LINE, 10)
+		_panel(Rect2(46, y, 222, 56), PANEL, TEAL if id == local_actor_id else LINE, 10)
 		draw_texture_rect(TUX, Rect2(56, y+4, 48, 48), false, Color.WHITE if actor.alive else Color(0.35,0.35,0.35,0.5))
 		draw_circle(Vector2(104, y + 39), 5, COLORS[id] if actor.alive else MUTED)
-		_text(Vector2(119, y+25), NAMES[id], 17, COLORS[id] if actor.alive else MUTED)
-		_text(Vector2(119, y+43), ("PLAYER 01" if id == 0 else "AI / " + ["RELAXED", "NORMAL", "FIERCE"][level]) if actor.alive else "ELIMINATED", 11, MUTED)
+		_text(Vector2(119, y+25), _actor_name(id).left(14), 17, COLORS[id] if actor.alive else MUTED)
+		_text(Vector2(119, y+43), ("YOU" if id == local_actor_id else "ONLINE PLAYER" if online and human_slots.has(id) else "AI / " + ["RELAXED", "NORMAL", "FIERCE"][arena.difficulty]) if actor.alive else "ELIMINATED", 11, MUTED)
 	_text(Vector2(1010, 162), "YOUR LOADOUT", 14, MUTED)
-	var player: Dictionary = arena.actors[0]
+	var player: Dictionary = arena.actors[local_actor_id]
 	_stat(191, "BOMBS", "%d / %d" % [player.capacity - player.bombs, player.capacity], TEAL, "bomb")
 	_stat(274, "BLAST RANGE", "%d TILES" % player.power, GOLD, "fire")
 	_stat(357, "SPEED", "%d%%" % roundi(0.17 / player.move_time * 100), Color("b09aff"), "speed")
@@ -332,7 +383,7 @@ func _draw_match() -> void:
 	draw_texture_rect(ICONS.shield,Rect2(1128,443,29,29),false)
 	_text(Vector2(1162,463),"SHIELD 1" if player.shield else "SHIELD 0",11,Color("79dfff") if player.shield else MUTED)
 	_draw_controls()
-	_text_center(Vector2(640, 751), flash if flash_time > 0 else "BREAK CRATES. GRAB UPGRADES. WATCH THE FUSE.", 15, GOLD if flash_time > 0 else MUTED)
+	_text_center(Vector2(640, 751), "SPECTATING — THE ROUND IS STILL RUNNING" if mode == "spectating" else flash if flash_time > 0 else "BREAK CRATES. GRAB UPGRADES. WATCH THE FUSE.", 15, GOLD if flash_time > 0 else MUTED)
 	_text_center(Vector2(640, 778), "WASD / ARROWS   move     •     SPACE   bomb     •     ESC   pause", 12, MUTED)
 	if countdown > 0 and mode == "playing":
 		draw_rect(Rect2(BOARD, Vector2(676, 572)), Color(0.02,0.06,0.1,0.55))
@@ -399,7 +450,7 @@ func _draw_board() -> void:
 
 func _draw_death(offset: Vector2) -> void:
 	var progress := 1.0 - death_remaining / DEATH_DURATION
-	var center := BOARD + Vector2(arena.actors[0].cell) * CELL + Vector2(26,26) + offset
+	var center := BOARD + Vector2(arena.actors[local_actor_id].cell) * CELL + Vector2(26,26) + offset
 	# Mark the actual lethal tile, even if movement interpolation was mid-step.
 	draw_arc(center, 27 + sin(progress * PI) * 8, 0, TAU, 48, GOLD, 3, true)
 	var alpha := clampf(1.0 - progress * 1.5, 0.0, 1.0)
@@ -450,13 +501,13 @@ func _draw_overlay() -> void:
 	if mode == "paused":
 		_text_center(Vector2(640,274),"TAKE A BREATHER",14,TEAL)
 		_text_center(Vector2(640,340),"Paused",48,WHITE)
-		_text_center(Vector2(640,376),"Your arena can wait.",18,MUTED)
+		_text_center(Vector2(640,376),"Online play continues while paused." if online else "Your arena can wait.",18,MUTED)
 	else:
-		var won := arena.winner == 0
-		var draw_game: bool = arena.actors[0].alive and not won
+		var won := arena.winner == local_actor_id
+		var draw_game: bool = arena.winner == -1 if online else arena.actors[local_actor_id].alive and not won
 		_text_center(Vector2(640,258),"ROUND COMPLETE",14,TEAL)
 		_text_center(Vector2(640,325),"Victory!" if won else "Time's up!" if draw_game else "Oh, Tux.",48,TEAL if won else GOLD)
-		_text_center(Vector2(640,370),"Last penguin standing." if won else "The arena ends in a draw." if draw_game else "Caught in the chain reaction.",18,WHITE)
+		_text_center(Vector2(640,370),(_actor_name(arena.winner) + " wins!") if online and arena.winner >= 0 else "Last penguin standing." if won else "The arena ends in a draw." if draw_game else "Caught in the chain reaction.",18,WHITE)
 		_text_center(Vector2(640,408),"SESSION  %d WINS / %d ROUNDS" % [victories,rounds],14,MUTED)
 
 func _panel(rect: Rect2, fill: Color, border: Color, radius: int) -> void:
@@ -485,13 +536,13 @@ func _on_exploded(cells: Array) -> void:
 			particles.append({"pos": BOARD+Vector2(cell)*CELL+Vector2(26,26),"velocity":Vector2.from_angle(randf()*TAU)*randf_range(30,110),"life":randf_range(0.2,0.6)})
 
 func _on_collected(id: int, kind: String) -> void:
-	if id == 0:
+	if id == local_actor_id:
 		flash = {"bomb":"EXTRA BOMB", "fire":"BLAST RANGE UP", "speed":"SPEED UP", "kick":"BOMB KICK — WALK INTO A BOMB", "shield":"SHIELD READY — ONE HIT PROTECTED"}[kind]
 		flash_time = 2.0
 		sound.play_effect("pickup")
 
 func _on_shield_absorbed(id: int) -> void:
-	if id == 0:
+	if id == local_actor_id:
 		flash = "SHIELD ABSORBED THE BLAST — MOVE!"
 		flash_time = 2.0
 		sound.play_effect("pickup")
@@ -510,3 +561,111 @@ func _save_settings() -> void:
 	config.set_value("game","muted",muted)
 	config.set_value("game","wins",best)
 	config.save("user://settings.cfg")
+
+func _actor_name(id: int) -> String:
+	return str(network_names[id]).left(20) if online and id >= 0 and id < network_names.size() else NAMES[id]
+
+func _open_network() -> void:
+	mode = "network"
+	held.clear()
+	buttons.clear()
+	online_ui.show()
+	Input.emulate_mouse_from_touch = true
+	if network.connected: online_ui.show_browser()
+	else: online_ui.show_connect()
+
+func _leave_online() -> void:
+	network.send_message({"type":"leave"})
+	online = false
+	local_actor_id = 0
+	latest_snapshot.clear()
+	_open_network()
+
+func _online_rematch() -> void:
+	online = false
+	mode = "network"
+	buttons.clear()
+	held.clear()
+	online_ui.show()
+	Input.emulate_mouse_from_touch = true
+	if not online_ui.room.is_empty(): online_ui.show_room()
+	network.send_message({"type":"ready"})
+
+func _network_disconnected() -> void:
+	if mode == "menu": return
+	online = false
+	local_actor_id = 0
+	latest_snapshot.clear()
+	_open_network()
+
+func _network_message(msg: Dictionary) -> void:
+	match str(msg.get("type","")):
+		"started":
+			online = true
+			local_actor_id = int(msg.slot)
+			online_round = int(msg.round)
+			counted_online_round = -1
+			latest_snapshot = msg.state
+			arena.apply_snapshot(msg.state)
+			_update_online_names(msg.state)
+			countdown = float(msg.countdown)
+			mode = "playing"
+			death_remaining = 0.0
+			input_elapsed = 0.0
+			flash_time = 0.0
+			held.clear()
+			particles.clear()
+			online_ui.hide()
+			Input.emulate_mouse_from_touch = false
+			_make_buttons()
+		"snapshot":
+			if not online: return
+			latest_snapshot = msg.state
+			countdown = float(msg.countdown)
+			_update_online_names(msg.state)
+			if mode == "dying": return
+			var was_alive: bool = arena.actors[local_actor_id].alive
+			arena.apply_snapshot(msg.state)
+			for event in msg.get("events",[]):
+				match str(event.type):
+					"explosion":
+						var cells: Array = []
+						for cell in event.cells: cells.append(Arena._wire_cell(cell))
+						_on_exploded(cells)
+					"pickup": _on_collected(int(event.actor),str(event.kind))
+					"shield": _on_shield_absorbed(int(event.actor))
+			if was_alive and not arena.actors[local_actor_id].alive:
+				_finish()
+			elif arena.finished:
+				_show_results()
+		"left":
+			if online: _network_disconnected()
+		"error":
+			flash = str(msg.message)
+			flash_time = 4.0
+
+func _update_online_names(state: Dictionary) -> void:
+	network_names.clear()
+	for actor in state.actors: network_names.append(str(actor.name))
+	human_slots = state.humans
+
+func _process_online(delta: float) -> void:
+	clock += delta
+	flash_time = maxf(0.0,flash_time-delta)
+	shake = maxf(0.0,shake-delta*30.0)
+	for particle in particles:
+		particle.life -= delta
+		particle.pos += particle.velocity*delta
+	particles = particles.filter(func(p): return p.life > 0.0)
+	if mode == "dying":
+		if foreground:
+			death_remaining = maxf(0.0,death_remaining-delta)
+			if death_remaining <= 0.0: _show_results()
+	else:
+		for actor in arena.actors: actor.cooldown = maxf(0.0,actor.cooldown-delta)
+	input_elapsed += delta
+	if input_elapsed >= 0.05:
+		input_elapsed = 0.0
+		var direction := _direction() if mode == "playing" and foreground and countdown <= 0.0 else Vector2i.ZERO
+		network.send_message({"type":"input","direction":[direction.x,direction.y],"bomb":false})
+	queue_redraw()
