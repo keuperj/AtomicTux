@@ -148,8 +148,8 @@ class SimulationTests(unittest.TestCase):
         point=m.actors[0]['position']
         m.move(0,(0,1))
         self.assertLessEqual(math.dist(point,m.actors[0]['position']),1/60/.17+.00001)
-        for _ in range(10): m.move(0,(0,1))
-        self.assertAlmostEqual(m.actors[0]['position'][0],point[0])
+        for _ in range(20): m.move(0,(0,1))
+        self.assertAlmostEqual(m.actors[0]['position'][0],2.)
         self.assertGreater(m.actors[0]['position'][1],1.5)
 
     def test_continuous_collisions_and_fire(self):
@@ -157,17 +157,17 @@ class SimulationTests(unittest.TestCase):
             m=self.fresh()
             m.grid[1][3]=obstacle
             m.move(0,(1,0),1.)
-            self.assertAlmostEqual(m.actors[0]['position'][0],2.22,places=3)
+            self.assertAlmostEqual(m.actors[0]['position'][0],2.,places=3)
             self.assertFalse(m.move(0,(1,0)))
         m=self.fresh()
         m.actors[1].update(cell=(3,1),position=(2.5,1.))
         m.move(0,(1,0),.5)
-        self.assertAlmostEqual(m.actors[0]['position'][0],1.94,places=3)
+        self.assertAlmostEqual(m.actors[0]['position'][0],1.,places=3)
         m=self.fresh()
         m.place(0)
         m.move(0,(1,0),.17)
         m.move(0,(-1,0),.17)
-        self.assertAlmostEqual(m.actors[0]['position'][0],1.58,places=3)
+        self.assertAlmostEqual(m.actors[0]['position'][0],2.,places=3)
         m=self.fresh()
         m.flames[(2,1)]=.5
         m.move(0,(1,0),.17)
@@ -183,7 +183,9 @@ class SimulationTests(unittest.TestCase):
             m.move(0,direction,.17)
             displacement=tuple(m.actors[0]['position'][i]-(6,5)[i] for i in (0,1))
             self.assertAlmostEqual(math.hypot(*displacement),1,places=5)
-            for axis in (0,1): self.assertAlmostEqual(displacement[axis],direction[axis],places=5)
+            axis = 0 if abs(direction[0]) > abs(direction[1]) else 1
+            self.assertAlmostEqual(displacement[axis],math.copysign(1,direction[axis]),places=5)
+            self.assertAlmostEqual(displacement[1-axis],0,places=5)
         m=self.fresh()
         self.put(m,0,(6,5))
         m.move(0,(1,1),.17)
@@ -192,14 +194,29 @@ class SimulationTests(unittest.TestCase):
         self.put(m,0,(6,5))
         for y in range(1,10): m.grid[y][7]=1
         m.move(0,(.6,.8),.34)
-        self.assertAlmostEqual(m.actors[0]['position'][0],6.22,places=3)
-        self.assertAlmostEqual(m.actors[0]['position'][1],6.6,places=3)
+        self.assertAlmostEqual(m.actors[0]['position'][0],6.,places=3)
+        self.assertAlmostEqual(m.actors[0]['position'][1],7.,places=3)
         m=self.fresh()
         self.put(m,0,(6,5))
         m.grid[5][7]=m.grid[6][6]=1
         m.move(0,(1,1),1.)
-        self.assertLess(m.actors[0]['position'][0],6.221)
-        self.assertLess(m.actors[0]['position'][1],5.221)
+        self.assertAlmostEqual(m.actors[0]['position'][0],6.)
+        self.assertAlmostEqual(m.actors[0]['position'][1],5.)
+
+    def test_grid_centerline_invariant(self):
+        for direction in ((1,0),(-1,0),(0,1),(0,-1)):
+            for obstacle in (1,2):
+                m=self.fresh()
+                self.put(m,0,(6,5))
+                m.grid[5+direction[1]][6+direction[0]]=obstacle
+                m.move(0,direction,1.)
+                self.assertEqual(m.actors[0]['position'],(6.,5.))
+        m=self.fresh()
+        self.put(m,0,(6,5))
+        for frame in range(180):
+            angle=(frame//15)*math.tau/12
+            m.move(0,(math.sin(angle),-math.cos(angle)))
+            self.assertTrue(any(abs(v-round(v)) < .00001 for v in m.actors[0]['position']))
 
     def test_continuous_ai_and_snapshot(self):
         m=self.fresh()

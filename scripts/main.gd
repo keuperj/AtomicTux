@@ -728,7 +728,7 @@ func _process_online(delta: float) -> void:
 	else:
 		for actor in arena.actors:
 			actor.render_elapsed = minf(0.05, actor.get("render_elapsed", 0.0) + delta)
-			actor.display_position = Vector2(actor.get("render_from", actor.position)).lerp(actor.position, actor.render_elapsed / 0.05)
+			actor.display_position = Arena.interpolate_lane(actor.get("render_from", actor.position), actor.position, actor.render_elapsed / 0.05)
 	input_elapsed += delta
 	if input_elapsed >= 0.05:
 		input_elapsed = 0.0

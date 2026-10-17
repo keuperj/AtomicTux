@@ -134,20 +134,57 @@ func move_actor(id: int, direction: Vector2, delta: float = 1.0 / 60.0) -> bool:
 	if not actor.alive: return false
 	_update_bomb_passers()
 	var input := direction.limit_length(1.0)
-	var travel := input.normalized()
 	var distance: float = delta / actor.move_time * input.length()
-	actor.facing = Vector2i(int(signf(travel.x)), 0) if absf(travel.x) > absf(travel.y) else Vector2i(0, int(signf(travel.y)))
 	var moved := false
-	# Sweep short steps, sliding each component separately along obstacles.
-	# A blocked component is lost; it never boosts the other component's speed.
 	while distance > 0.000001 and actor.alive:
-		var step := minf(MOTION_STEP, distance)
-		var moved_x := _move_axis(id, 0, travel.x * step)
-		var moved_y := _move_axis(id, 1, travel.y * step) if actor.alive else false
-		if not moved_x and not moved_y: break
+		var point: Vector2 = actor.position
+		var axis := -1
+		var sign_value := 0.0
+		for candidate in 2:
+			if absf(point[candidate] - roundf(point[candidate])) > 0.00001:
+				axis = candidate
+				break
+		if axis >= 0:
+			# Finish the current lane before taking a buffered perpendicular turn.
+			sign_value = signf(input[axis])
+			if sign_value == 0.0: sign_value = signf(actor.facing[axis])
+			if sign_value == 0.0: sign_value = signf(roundf(point[axis]) - point[axis])
+		else:
+			point = point.round()
+			actor.position = point
+			var preferred := 0 if absf(input.x) > absf(input.y) else 1
+			for candidate in [preferred, 1 - preferred]:
+				if absf(input[candidate]) < 0.00001: continue
+				var target := point
+				target[candidate] += signf(input[candidate])
+				if _lane_open(id, target, candidate, signf(input[candidate])):
+					axis = candidate
+					sign_value = signf(input[candidate])
+					break
+			if axis < 0: break
+		var endpoint := point
+		endpoint[axis] = floorf(point[axis]) + 1.0 if sign_value > 0 else ceilf(point[axis]) - 1.0
+		if not _lane_open(id, endpoint, axis, sign_value): break
+		var step := minf(minf(MOTION_STEP, distance), absf(endpoint[axis] - point[axis]))
+		var facing := Vector2i.ZERO
+		facing[axis] = int(sign_value)
+		actor.facing = facing
+		if not _move_axis(id, axis, step * sign_value): break
 		moved = true
 		distance -= step
 	return moved
+
+func _lane_open(id: int, target: Vector2, axis: int, sign_value: float) -> bool:
+	if tile(Vector2i(target)) != EMPTY: return false
+	for other in actors:
+		if other.alive and other.id != id and _overlaps(target, other.position, ACTOR_RADIUS * 2): return false
+	var index := bomb_at(Vector2i(target))
+	if index >= 0 and not bombs[index].get("passers", []).has(id):
+		if not actors[id].kick: return false
+		var direction := Vector2i.ZERO
+		direction[axis] = int(sign_value)
+		_kick_bomb(index, direction)
+	return _can_occupy(id, target)
 
 func _move_axis(id: int, axis: int, amount: float) -> bool:
 	if absf(amount) < 0.000001: return false
@@ -363,3 +400,21 @@ func apply_snapshot(state: Dictionary) -> void:
 
 static func _wire_cell(value: Array) -> Vector2i:
 	return Vector2i(int(value[0]),int(value[1]))
+
+static func interpolate_lane(from: Vector2, to: Vector2, weight: float) -> Vector2:
+	if absf(from.x-to.x) < 0.00001 or absf(from.y-to.y) < 0.00001:
+		return from.lerp(to, weight)
+	if absf(from.x-to.x) + absf(from.y-to.y) > 1.0:
+		return to
+	var corner: Vector2
+	if absf(from.y-roundf(from.y)) < 0.00001 and absf(to.x-roundf(to.x)) < 0.00001:
+		corner = Vector2(to.x, from.y)
+	elif absf(from.x-roundf(from.x)) < 0.00001 and absf(to.y-roundf(to.y)) < 0.00001:
+		corner = Vector2(from.x, to.y)
+	else:
+		# A stale snapshot may span several turns; don't draw a shortcut through walls.
+		return to
+	var first := from.distance_to(corner)
+	var second := corner.distance_to(to)
+	var distance := (first + second) * clampf(weight, 0, 1)
+	return from.move_toward(corner, distance) if distance <= first else corner.move_toward(to, distance-first)

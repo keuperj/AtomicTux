@@ -40,23 +40,23 @@ func _initialize() -> void:
 	point = a.actors[0].position
 	a.move_actor(0, Vector2i.DOWN)
 	check(a.actors[0].position.distance_to(point) <= 1.0/60.0/.17+.0001, "Changing direction does not teleport")
-	for i in 10: a.move_actor(0, Vector2i.DOWN)
-	check(absf(a.actors[0].position.x-point.x) < .0001 and a.actors[0].position.y > 1.5, "Turning preserves the chosen angle without lane snapping")
+	for i in 20: a.move_actor(0, Vector2i.DOWN)
+	check(absf(a.actors[0].position.x-2.0) < .0001 and a.actors[0].position.y > 1.5, "Buffered turn starts at the next tile center")
 	for obstacle in [Arena.WALL, Arena.CRATE]:
 		a = fresh()
 		a.grid[1][3] = obstacle
 		a.move_actor(0, Vector2i.RIGHT, 1.0)
-		check(absf(a.actors[0].position.x-2.22) < .001, "Swept body stops at wall/crate boundary without tunnelling")
+		check(absf(a.actors[0].position.x-2.0) < .001, "Walls and crates stop Tux at the last clear tile center")
 		check(not a.move_actor(0, Vector2i.RIGHT), "Blocked input does not jitter through obstacle")
 	a = fresh()
 	put(a, 1, Vector2(2.5,1))
 	a.move_actor(0, Vector2i.RIGHT, .5)
-	check(absf(a.actors[0].position.x-1.94) < .001, "Bodies collide at fractional positions")
+	check(absf(a.actors[0].position.x-1.0) < .001, "Occupied lane prevents entering from the previous center")
 	a = fresh()
 	a.place_bomb(0)
 	a.move_actor(0, Vector2i.RIGHT, .17)
 	a.move_actor(0, Vector2i.LEFT, .17)
-	check(absf(a.actors[0].position.x-1.58) < .001, "Bomb pass-through expires after the body leaves")
+	check(absf(a.actors[0].position.x-2.0) < .001, "Bomb pass-through expires after the body leaves")
 	a = fresh()
 	put(a, 0, Vector2(2.2,1))
 	a.place_bomb(0)
@@ -81,5 +81,24 @@ func _initialize() -> void:
 		a.tick(1.0/60.0)
 		Bot.step(a,1)
 		check(a.actors[1].position.distance_to(before) <= 1.0/60.0/a.actors[1].move_time + .0001, "AI never jumps at waypoint changes")
+	for direction in Arena.DIRECTIONS:
+		for obstacle in [Arena.WALL, Arena.CRATE]:
+			a = fresh()
+			put(a,0,Vector2(6,5))
+			var blocked: Vector2i = Vector2i(6,5) + direction
+			a.grid[blocked.y][blocked.x] = obstacle
+			a.move_actor(0,Vector2(direction),1.)
+			check(a.actors[0].position == Vector2(6,5), "Every wall/crate approach stops at the center")
+	a = fresh()
+	put(a,0,Vector2(6,5))
+	for frame in 180:
+		var angle := floorf(frame/15.0) * TAU/12.0
+		a.move_actor(0,Vector2(sin(angle),-cos(angle)))
+		point = a.actors[0].position
+		check(absf(point.x-roundf(point.x)) < .00001 or absf(point.y-roundf(point.y)) < .00001, "Changing analog angles never leaves grid center lines")
+	for pair in [[Vector2(1.8,1),Vector2(2,1.2)],[Vector2(1,1.8),Vector2(1.2,2)]]:
+		for i in range(11):
+			point = Arena.interpolate_lane(pair[0],pair[1],i/10.0)
+			check(absf(point.x-roundf(point.x)) < .00001 or absf(point.y-roundf(point.y)) < .00001, "Online corner interpolation stays centered")
 	print("AtomicTux continuous motion: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)

@@ -89,21 +89,53 @@ class Match:
             return False
         magnitude = math.hypot(*direction)
         if magnitude < .000001: return False
-        travel = tuple(v/magnitude for v in direction)
+        input_direction = tuple(v/max(1.,magnitude) for v in direction)
         self.update_passers()
         distance, moved = dt / a['move_time'] * min(1., magnitude), False
-        axis = 0 if abs(travel[0]) > abs(travel[1]) else 1
-        facing = [0,0]
-        facing[axis] = 1 if travel[axis] > 0 else -1
-        a['facing'] = tuple(facing)
         while distance > .000001 and a['alive']:
-            step = min(MOTION_STEP, distance)
-            moved_x = self.move_axis(actor_id, 0, travel[0]*step)
-            moved_y = self.move_axis(actor_id, 1, travel[1]*step) if a['alive'] else False
-            if not moved_x and not moved_y: break
+            point = a['position']
+            axis = next((i for i in (0,1) if abs(point[i]-math.floor(point[i]+.5)) > .00001), None)
+            sign = lambda v: (v > 0) - (v < 0)
+            if axis is not None:
+                sign_value = sign(input_direction[axis]) or sign(a['facing'][axis]) or sign(math.floor(point[axis]+.5)-point[axis])
+            else:
+                point = tuple(float(v) for v in cell_at(point))
+                a['position'] = point
+                preferred = 0 if abs(input_direction[0]) > abs(input_direction[1]) else 1
+                for candidate in (preferred,1-preferred):
+                    if abs(input_direction[candidate]) < .00001: continue
+                    target = list(point)
+                    target[candidate] += sign(input_direction[candidate])
+                    if self.lane_open(actor_id,tuple(target),candidate,sign(input_direction[candidate])):
+                        axis, sign_value = candidate, sign(input_direction[candidate])
+                        break
+                if axis is None: break
+            endpoint = list(point)
+            endpoint[axis] = math.floor(point[axis])+1 if sign_value > 0 else math.ceil(point[axis])-1
+            if not self.lane_open(actor_id,tuple(endpoint),axis,sign_value): break
+            step = min(MOTION_STEP,distance,abs(endpoint[axis]-point[axis]))
+            facing = [0,0]
+            facing[axis] = sign_value
+            a['facing'] = tuple(facing)
+            if not self.move_axis(actor_id,axis,step*sign_value): break
             moved = True
             distance -= step
         return moved
+
+    def lane_open(self, actor_id, target, axis, sign_value):
+        cell = cell_at(target)
+        if self.tile(cell) != 0: return False
+        if any(a['alive'] and a['id'] != actor_id and overlaps(target,a['position'],ACTOR_RADIUS*2) for a in self.actors): return False
+        bomb = self.bomb_at(cell)
+        if bomb and actor_id not in bomb.get('passers',[]):
+            if not self.actors[actor_id]['kick']: return False
+            direction = [0,0]
+            direction[axis] = sign_value
+            dest = add(cell,direction)
+            if not self.bomb_blocked(dest):
+                bomb.update(cell=dest,direction=tuple(direction),motion_time=0.,passers=[])
+                if dest in self.flames: bomb['fuse'] = 0.
+        return self.can_occupy(actor_id,target)
 
     def move_axis(self, actor_id, axis, amount):
         if abs(amount) < .000001: return False

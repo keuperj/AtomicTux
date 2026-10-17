@@ -29,17 +29,20 @@ Command line: `godot --path .`
 
 Touch the right joystick, then keep your finger down and slide to steer. Movement
 continues while held, even when your finger slides beyond the ring. Return to the
-center to stop temporarily or lift to release. Steering follows the exact angle:
-12 o'clock moves up, 3 moves right, and 1 or 2 splits movement proportionally
-between up and right. The same applies around the entire circle. Diagonals share
-one speed budget, so they are no faster than straight movement. Another finger
-can drop bombs with the left button simultaneously. Keyboard directions can also
-be combined for diagonal movement.
-All contestants move continuously, including AI and online players. Releasing
-the joystick stops your Tux between tile centers; reversing direction responds
-immediately. Steering does not snap to corridor centers. Walls, crates, bombs,
-other players, and flames collide with the Tux's body at its actual position.
-Bombs still occupy tiles and are placed on the nearest tile.
+center to stop temporarily or lift to release. The joystick accepts every clock
+angle: 12 o'clock requests up, 3 requests right, and intermediate angles prefer
+the stronger component. If that lane is blocked, the other requested direction
+is tried. Keyboard directions can also be combined. Another finger can drop
+bombs with the left button simultaneously.
+
+All contestants move smoothly along grid center lines, including AI and online
+players. Tux stays centered across each corridor, turns only at tile centers,
+and stops at the center of the last clear tile before a wall or crate. A turn
+requested between centers is buffered until the next center; reversing along
+the current lane responds immediately. Releasing the joystick stops along the
+center line. Diagonal input never cuts corners or increases the speed budget.
+Bombs occupy the nearest tile, and body collisions still apply to bombs, other
+players, and flames. Online animation follows the same centered corner paths.
 The joystick has a larger ring and touch area for small phone screens.
 The game pauses when backgrounded and clears held touches.
 

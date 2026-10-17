@@ -295,13 +295,17 @@ for bombs, crates, pickups, and AI routes. Collision checks sweep the player's
 body through its movement, including contact with flames and other contestants.
 Snapshots include each actor's `position` as two floating-point coordinates in
 tile units (integer coordinates are tile centers), alongside its nearest `cell`.
-The client interpolates those positions across the 50 ms snapshot interval.
+Players stay on grid center lines and turn at tile centers. Walls and crates
+block movement from the previous center, rather than allowing an approach to
+their edges. The client interpolates positions across the 50 ms snapshot interval
+along those center lines, including corner turns.
 Update and restart the Python server along with updated clients to use these
 movement rules online; restarting ends active rooms.
 
 Movement intents now carry two finite numeric components in `direction`, each
 between -1 and 1. The server normalizes vectors longer than one to enforce a
-single speed budget; fractional and diagonal inputs retain their proportions.
+single speed budget. Fractional and diagonal inputs select the preferred lane
+by their stronger component, with the other requested lane used if blocked.
 Invalid numbers, booleans, and out-of-range components are rejected. Update the
 server before using analog steering in new clients. Nearby explosion events also
 trigger distance-scaled handheld vibration on supported clients; the server does

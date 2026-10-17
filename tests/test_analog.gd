@@ -36,7 +36,8 @@ func run() -> void:
 		var arena := fresh()
 		arena.move_actor(0,direction,.17)
 		var moved: Vector2 = arena.actors[0].position - Vector2(6,5)
-		check(moved.distance_to(expected) < .0001, "Both axes receive their share at %d o'clock" % hour)
+		var lane := Vector2(signf(expected.x),0) if absf(expected.x) > absf(expected.y) else Vector2(0,signf(expected.y))
+		check(moved.distance_to(lane) < .0001, "Clock angle selects a centered lane at %d o'clock" % hour)
 		check(absf(moved.length()-1) < .0001, "Diagonal speed stays within one movement budget")
 	check(game._pad_direction(center+Vector2(5,5)) == Vector2.ZERO, "Joystick center remains a dead zone")
 	var a := fresh()
@@ -45,12 +46,12 @@ func run() -> void:
 	a = fresh()
 	for y in range(1,10): a.grid[y][7] = Arena.WALL
 	a.move_actor(0,Vector2(.6,.8),.34)
-	check(absf(a.actors[0].position.x-6.22) < .001 and absf(a.actors[0].position.y-6.6) < .001, "Wall sliding retains the unblocked component's budget")
+	check(a.actors[0].position.is_equal_approx(Vector2(6,7)), "Steering remains centered alongside walls")
 	a = fresh()
 	a.grid[5][7] = Arena.WALL
 	a.grid[6][6] = Arena.WALL
 	a.move_actor(0,Vector2(1,1),1.)
-	check(a.actors[0].position.x < 6.221 and a.actors[0].position.y < 5.221, "Diagonal input cannot cut through a solid corner")
+	check(a.actors[0].position.is_equal_approx(Vector2(6,5)), "Diagonal input cannot cut through a solid corner")
 	a = fresh()
 	a.actors[0].position = Vector2(7,5)
 	a.actors[0].cell = Vector2i(7,5)
