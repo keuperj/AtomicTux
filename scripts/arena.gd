@@ -5,6 +5,7 @@ extends RefCounted
 signal exploded(cells: Array)
 signal collected(actor_id: int, kind: String)
 signal eliminated(actor_id: int)
+signal shield_absorbed(actor_id: int)
 
 const WIDTH := 13
 const HEIGHT := 11
@@ -13,8 +14,9 @@ const WALL := 1
 const CRATE := 2
 const FUSE := 2.4
 const FIRE_TIME := 0.65
+const SHIELD_GRACE := FIRE_TIME + 0.1
 const KICK_STEP := 0.065
-const POWER_UPS := ["bomb", "fire", "speed", "kick"]
+const POWER_UPS := ["bomb", "fire", "speed", "kick", "shield"]
 const DIRECTIONS := [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
 var grid: Array = []
 var actors: Array = []
@@ -57,7 +59,7 @@ func start(seed_value: int, level: int = 1) -> void:
 	for id in 4:
 		actors.append({"id": id, "cell": spawns[id], "previous": spawns[id], "alive": true,
 			"cooldown": 0.0, "move_time": 0.17 if id == 0 else [0.42, 0.21, 0.17][level],
-			"capacity": 1, "power": 2, "bombs": 0, "kick": false, "bomb_cooldown": 0.0, "facing": Vector2i.DOWN})
+			"capacity": 1, "power": 2, "bombs": 0, "kick": false, "shield": false, "invulnerable": 0.0, "bomb_cooldown": 0.0, "facing": Vector2i.DOWN})
 
 func tile(cell: Vector2i) -> int:
 	if cell.x < 0 or cell.y < 0 or cell.x >= WIDTH or cell.y >= HEIGHT:
@@ -98,7 +100,7 @@ func move_actor(id: int, direction: Vector2i) -> bool:
 	actor.cell = target
 	actor.cooldown = actor.move_time
 	if flames.has(target):
-		_kill(actor)
+		_hit_by_fire(actor)
 	elif pickups.has(target):
 		var kind: String = pickups[target]
 		match kind:
@@ -106,6 +108,7 @@ func move_actor(id: int, direction: Vector2i) -> bool:
 			"fire": actor.power = mini(actor.power + 1, 7)
 			"speed": actor.move_time = maxf(0.105, actor.move_time - 0.025)
 			"kick": actor.kick = true
+			"shield": actor.shield = true
 		pickups.erase(target)
 		collected.emit(id, kind)
 	return true
@@ -202,6 +205,7 @@ func tick(delta: float) -> void:
 	remaining = maxf(0.0, remaining - delta)
 	for actor in actors:
 		actor.cooldown = maxf(0.0, actor.cooldown - delta)
+		actor.invulnerable = maxf(0.0, actor.invulnerable - delta)
 		actor.bomb_cooldown = maxf(0.0, actor.bomb_cooldown - delta)
 	for cell in flames.keys():
 		flames[cell] -= delta
@@ -219,7 +223,7 @@ func tick(delta: float) -> void:
 			index += 1
 	for actor in actors:
 		if actor.alive and flames.has(actor.cell):
-			_kill(actor)
+			_hit_by_fire(actor)
 	var survivors: Array = actors.filter(func(a): return a.alive)
 	if survivors.size() <= 1 or not actors[0].alive or remaining <= 0.0:
 		finished = true
@@ -241,6 +245,17 @@ func _detonate(index: int) -> void:
 			if rng.randf() < 0.38:
 				pickups[cell] = POWER_UPS[rng.randi_range(0, POWER_UPS.size() - 1)]
 	exploded.emit(cells)
+
+func _hit_by_fire(actor: Dictionary) -> void:
+	if not actor.alive or actor.invulnerable > 0.0:
+		return
+	if actor.shield:
+		actor.shield = false
+		# One charge; the short grace window covers lingering/overlapping flames.
+		actor.invulnerable = SHIELD_GRACE
+		shield_absorbed.emit(actor.id)
+		return
+	_kill(actor)
 
 func _kill(actor: Dictionary) -> void:
 	if not actor.alive:

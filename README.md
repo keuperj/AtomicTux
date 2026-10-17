@@ -35,10 +35,12 @@ Difficulty, sound preference, and lifetime wins are saved in Godot's `user://` d
 - One human versus three bots; survive to be the last penguin standing.
 - Bombs explode after **2.4 seconds**, with a visible fuse ring. Your own blast is lethal.
 - Cross-shaped blasts stop at solid walls and the first crate. Bombs trigger chain reactions.
-- Crates can reveal upgrades: a **bomb-plus** adds bomb capacity, a **flame** extends fire range, a **running boot** increases speed, and a **boot kicking a bomb** grants Bomb Kick.
+- Crates can reveal upgrades: a **bomb-plus** adds bomb capacity, a **flame** extends fire range, a **running boot** increases speed, a **boot kicking a bomb** grants Bomb Kick, and a **shield** absorbs one explosion hit.
+- **Shield:** holds one charge (extra pickups do not stack). The first fire hit consumes it and gives **0.75 seconds** of protection from lingering flames and overlapping blasts. Afterward, another hit is lethal unless you collect a new shield. The bubble and HUD show protection; all upgrades reset each round.
 - **Bomb Kick:** walk into a bomb to send it sliding at about 15 tiles/second. It bounces off walls, crates, other bombs, and contestants until its original fuse expires. Fire triggers it immediately. A kick needs a free tile beyond the bomb; the ability lasts for the round.
 - Pickups become accessible after the fire clears. Fire lasts **0.65 seconds**.
 - You may leave a bomb you just planted, but cannot walk back through it without Bomb Kick.
+- On elimination, the lethal blast stays visible for a two-second Tux death animation before the next-game dialog appears.
 - A round ends immediately on your elimination or when one survivor remains. The **2:30** timer ends unresolved rounds in a draw.
 - Relaxed bots move every **0.42 seconds** and wait at least **4 seconds** between bomb placements. Normal and Fierce retain their **0.21 / 0.17 second** movement intervals. All bots use the same routing and escape logic.
 
@@ -73,6 +75,8 @@ Keystores and credentials are excluded from version control.
 godot --headless --editor --path . --quit
 # Simulation rules, AI escape behavior, and seeded full-match tests.
 godot --headless --path . --script tests/test_arena.gd
+# Shield pickup, single-use protection, lingering flames, and reset.
+godot --headless --path . --script tests/test_shield.gd
 # Bomb kicking, bouncing, fuse behavior, and Relaxed AI pacing.
 godot --headless --path . --script tests/test_kick.gd
 # Menu, touch, pause, backgrounding, and replay integration tests.

@@ -10,8 +10,10 @@ const ICONS := {
 	"bomb": preload("res://assets/icons/bomb.svg"),
 	"fire": preload("res://assets/icons/fire.svg"),
 	"speed": preload("res://assets/icons/speed.svg"),
-	"kick": preload("res://assets/icons/kick.svg")
+	"kick": preload("res://assets/icons/kick.svg"),
+	"shield": preload("res://assets/icons/shield.svg")
 }
+const DEATH_DURATION := 2.0
 const CELL := 52.0
 const BOARD := Vector2(302, 142)
 const INK := Color("091421")
@@ -43,6 +45,8 @@ var muted := false
 var best := 0
 var match_seed := 0
 var panel_styles: Dictionary = {}
+var death_remaining := 0.0
+var foreground := true
 
 func _ready() -> void:
 	get_tree().quit_on_go_back = false
@@ -51,6 +55,7 @@ func _ready() -> void:
 	_load_settings()
 	arena.exploded.connect(_on_exploded)
 	arena.collected.connect(_on_collected)
+	arena.shield_absorbed.connect(_on_shield_absorbed)
 	arena.eliminated.connect(func(id):
 		if id != 0:
 			flash = NAMES[id] + " eliminated"
@@ -75,14 +80,19 @@ func _resize() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
+		foreground = false
 		held.clear()
 		if mode == "playing":
 			mode = "paused"
 			_make_buttons()
+	elif what == NOTIFICATION_APPLICATION_FOCUS_IN or what == NOTIFICATION_APPLICATION_RESUMED:
+		foreground = true
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		_toggle_pause()
 
 func _process(delta: float) -> void:
+	if mode == "dying" and not foreground:
+		return
 	clock += delta
 	flash_time = maxf(0.0, flash_time - delta)
 	shake = maxf(0.0, shake - delta * 30.0)
@@ -91,7 +101,11 @@ func _process(delta: float) -> void:
 		particle.pos += particle.velocity * delta
 		particle.velocity *= 0.95
 	particles = particles.filter(func(p): return p.life > 0.0)
-	if mode == "playing":
+	if mode == "dying":
+		death_remaining = maxf(0.0, death_remaining - delta)
+		if death_remaining <= 0.0:
+			_show_results()
+	elif mode == "playing":
 		if countdown > 0.0:
 			countdown = maxf(0.0, countdown - delta)
 		else:
@@ -105,6 +119,10 @@ func _process(delta: float) -> void:
 				var direction := _direction()
 				if direction != Vector2i.ZERO:
 					arena.move_actor(0, direction)
+				if not arena.actors[0].alive:
+					arena.tick(0.0)
+					_finish()
+					break
 				for id in range(1, 4):
 					Bot.step(arena, id)
 	queue_redraw()
@@ -175,6 +193,7 @@ func _start_match() -> void:
 	arena.start(match_seed, level)
 	mode = "playing"
 	countdown = 3.0
+	death_remaining = 0.0
 	accumulator = 0.0
 	particles.clear()
 	held.clear()
@@ -182,6 +201,18 @@ func _start_match() -> void:
 	_make_buttons()
 
 func _finish() -> void:
+	if not arena.actors[0].alive:
+		# Keep the lethal blast and final positions visible; only visuals advance.
+		mode = "dying"
+		death_remaining = DEATH_DURATION
+		held.clear()
+		flash = "CAUGHT IN THE BLAST"
+		flash_time = DEATH_DURATION
+		_make_buttons()
+	else:
+		_show_results()
+
+func _show_results() -> void:
 	mode = "result"
 	held.clear()
 	rounds += 1
@@ -294,9 +325,12 @@ func _draw_match() -> void:
 	_stat(191, "BOMBS", "%d / %d" % [player.capacity - player.bombs, player.capacity], TEAL, "bomb")
 	_stat(274, "BLAST RANGE", "%d TILES" % player.power, GOLD, "fire")
 	_stat(357, "SPEED", "%d%%" % roundi(0.17 / player.move_time * 100), Color("b09aff"), "speed")
-	_panel(Rect2(1010,440,222,35),PANEL,LINE,8)
-	draw_texture_rect(ICONS.kick,Rect2(1018,443,29,29),false)
-	_text(Vector2(1055,463),"KICK ON" if player.kick else "KICK: FIND UPGRADE",13,Color("83caff") if player.kick else MUTED)
+	_panel(Rect2(1010,440,108,35),PANEL,LINE,8)
+	draw_texture_rect(ICONS.kick,Rect2(1014,443,29,29),false)
+	_text(Vector2(1048,463),"KICK ON" if player.kick else "KICK OFF",11,Color("83caff") if player.kick else MUTED)
+	_panel(Rect2(1124,440,108,35),PANEL,LINE,8)
+	draw_texture_rect(ICONS.shield,Rect2(1128,443,29,29),false)
+	_text(Vector2(1162,463),"SHIELD 1" if player.shield else "SHIELD 0",11,Color("79dfff") if player.shield else MUTED)
 	_draw_controls()
 	_text_center(Vector2(640, 751), flash if flash_time > 0 else "BREAK CRATES. GRAB UPGRADES. WATCH THE FUSE.", 15, GOLD if flash_time > 0 else MUTED)
 	_text_center(Vector2(640, 778), "WASD / ARROWS   move     •     SPACE   bomb     •     ESC   pause", 12, MUTED)
@@ -328,7 +362,7 @@ func _draw_board() -> void:
 				draw_line(origin+Vector2(9,39),origin+Vector2(42,13),Color("93653f"),2)
 			elif arena.pickups.has(cell) and not arena.flames.has(cell):
 				var kind: String = arena.pickups[cell]
-				var color := TEAL if kind == "bomb" else GOLD if kind == "fire" else Color("83caff") if kind == "kick" else Color("b09aff")
+				var color := TEAL if kind == "bomb" else GOLD if kind == "fire" else Color("79dfff") if kind == "shield" else Color("83caff") if kind == "kick" else Color("b09aff")
 				_panel(Rect2(origin+Vector2(6,6),Vector2(40,40)),color.darkened(0.72),color,9)
 				draw_texture_rect(ICONS[kind], Rect2(origin+Vector2(8,8),Vector2(36,36)), false)
 	for bomb in arena.bombs:
@@ -348,13 +382,30 @@ func _draw_board() -> void:
 		if not actor.alive: continue
 		var blend := 1.0 - clampf(actor.cooldown / actor.move_time, 0, 1)
 		var center := BOARD + Vector2(actor.previous).lerp(Vector2(actor.cell), minf(1.0, blend*2.5))*CELL + Vector2(26,26)+offset
+		if actor.shield or actor.invulnerable > 0.0:
+			var pulse: float = 0.7 + sin(clock * 18.0) * 0.3 if actor.invulnerable > 0.0 else 1.0
+			draw_circle(center,29,Color(0.47,0.87,1.0,0.12*pulse))
+			draw_arc(center,29,0,TAU,48,Color(0.64,0.93,1.0,0.8*pulse),2,true)
+			draw_texture_rect(ICONS.shield,Rect2(center+Vector2(13,-33),Vector2(18,18)),false,Color(1,1,1,pulse))
 		draw_circle(center+Vector2(0,15),21,Color(0,0,0,0.3))
 		draw_arc(center+Vector2(0,10),21,0,TAU,32,COLORS[actor.id],3,true)
 		var bob := sin(blend*PI)*3 if actor.cooldown > 0 else sin(clock*2+actor.id)*1.2
 		draw_texture_rect(TUX,Rect2(center-Vector2(26,34+bob),Vector2(52,57)),false)
 		draw_circle(center+Vector2(0,-31-bob),5,COLORS[actor.id])
+	if mode == "dying":
+		_draw_death(offset)
 	for particle in particles:
 		draw_circle(particle.pos, maxf(1,particle.life*6), Color(1,0.72,0.3,minf(1,particle.life*2)))
+
+func _draw_death(offset: Vector2) -> void:
+	var progress := 1.0 - death_remaining / DEATH_DURATION
+	var center := BOARD + Vector2(arena.actors[0].cell) * CELL + Vector2(26,26) + offset
+	# Mark the actual lethal tile, even if movement interpolation was mid-step.
+	draw_arc(center, 27 + sin(progress * PI) * 8, 0, TAU, 48, GOLD, 3, true)
+	var alpha := clampf(1.0 - progress * 1.5, 0.0, 1.0)
+	draw_set_transform(center + Vector2(0, -progress * 30), progress * 1.2)
+	draw_texture_rect(TUX, Rect2(-26,-34,52,57), false, Color(1,0.8,0.7,alpha))
+	draw_set_transform(Vector2.ZERO)
 
 func _draw_bomb(center: Vector2, radius: float, fuse: float) -> void:
 	var pulse := 1.0 + sin(clock*(12 if fuse < 1.0 else 5))*0.07
@@ -435,7 +486,13 @@ func _on_exploded(cells: Array) -> void:
 
 func _on_collected(id: int, kind: String) -> void:
 	if id == 0:
-		flash = {"bomb":"EXTRA BOMB", "fire":"BLAST RANGE UP", "speed":"SPEED UP", "kick":"BOMB KICK — WALK INTO A BOMB"}[kind]
+		flash = {"bomb":"EXTRA BOMB", "fire":"BLAST RANGE UP", "speed":"SPEED UP", "kick":"BOMB KICK — WALK INTO A BOMB", "shield":"SHIELD READY — ONE HIT PROTECTED"}[kind]
+		flash_time = 2.0
+		sound.play_effect("pickup")
+
+func _on_shield_absorbed(id: int) -> void:
+	if id == 0:
+		flash = "SHIELD ABSORBED THE BLAST — MOVE!"
 		flash_time = 2.0
 		sound.play_effect("pickup")
 
