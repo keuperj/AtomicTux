@@ -46,9 +46,7 @@ static func _follow(arena: TuxArena, id: int, delta: float) -> void:
 		actor.goal = null
 		step(arena, id, delta)
 		return
-	var direction := Vector2i.ZERO
-	if absf(offset.x) > absf(offset.y): direction = Vector2i(int(signf(offset.x)), 0)
-	else: direction = Vector2i(0, int(signf(offset.y)))
+	var direction := offset.normalized()
 	var used := minf(delta, offset.length() * actor.move_time)
 	if not arena.move_actor(id, direction, used):
 		actor.goal = null

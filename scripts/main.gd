@@ -5,6 +5,7 @@ const Bot = preload("res://scripts/bot.gd")
 const Network = preload("res://scripts/network_client.gd")
 const OnlineUI = preload("res://scripts/multiplayer_ui.gd")
 const Sound = preload("res://scripts/sound.gd")
+const Haptics = preload("res://scripts/haptics.gd")
 const TUX = preload("res://assets/art/tux.png")
 const MOVE_CENTER := Vector2(1120, 620)
 const MOVE_RADIUS := 142.0
@@ -32,6 +33,7 @@ const COLORS := [Color("68efcd"), Color("ff8597"), Color("b09aff"), Color("ffc96
 const NAMES := ["YOU", "EMBER", "BYTE", "NOVA"]
 var arena := Arena.new()
 var sound := Sound.new()
+var haptics := Haptics.new()
 var font: Font = ThemeDB.fallback_font
 var mode := "menu"
 var level := 1
@@ -71,6 +73,7 @@ func _ready() -> void:
 	get_tree().quit_on_go_back = false
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	add_child(sound)
+	add_child(haptics)
 	_load_settings()
 	add_child(network)
 	add_child(online_ui)
@@ -173,7 +176,7 @@ func _process(delta: float) -> void:
 					_finish()
 					break
 				var direction := _direction()
-				if direction != Vector2i.ZERO:
+				if direction != Vector2.ZERO:
 					arena.move_actor(local_actor_id, direction)
 				if not arena.actors[local_actor_id].alive:
 					arena.tick(0.0)
@@ -183,15 +186,16 @@ func _process(delta: float) -> void:
 					Bot.step(arena, id)
 	queue_redraw()
 
-func _direction() -> Vector2i:
+func _direction() -> Vector2:
 	for value in held.values():
-		if value is Vector2i and value != Vector2i.ZERO:
-			return value
-	if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP): return Vector2i.UP
-	if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN): return Vector2i.DOWN
-	if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT): return Vector2i.LEFT
-	if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT): return Vector2i.RIGHT
-	return Vector2i.ZERO
+		if value is Vector2 or value is Vector2i:
+			return Vector2(value).limit_length(1.0)
+	var direction := Vector2.ZERO
+	if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP): direction.y -= 1
+	if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN): direction.y += 1
+	if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT): direction.x -= 1
+	if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT): direction.x += 1
+	return direction.limit_length(1.0)
 
 func _input(event: InputEvent) -> void:
 	if mode == "network": return
@@ -235,12 +239,12 @@ func _release_pointer(id: int) -> void:
 	held.erase(id)
 	if held.is_empty(): stick_offset = Vector2.ZERO
 
-func _pad_direction(point: Vector2) -> Vector2i:
+func _pad_direction(point: Vector2) -> Vector2:
 	var offset := point - _move_center()
 	if offset.length() < 20.0:
-		return Vector2i.ZERO
-	if absf(offset.x) > absf(offset.y): return Vector2i(signi(int(offset.x)), 0)
-	return Vector2i(0, signi(int(offset.y)))
+		return Vector2.ZERO
+	# Every angle shares the same speed budget (e.g. 1 o'clock = .5, -.866).
+	return offset.normalized()
 
 func _bomb() -> void:
 	if online:
@@ -529,7 +533,7 @@ func _draw_controls() -> void:
 	draw_arc(center, MOVE_TRAVEL, 0, TAU, 64, Color("263c50"), 1, true)
 	for direction in Arena.DIRECTIONS:
 		var mark := center + Vector2(direction) * 123
-		draw_circle(mark, 3, TEAL if _direction() == direction and mode == "playing" else MUTED)
+		draw_circle(mark, 3, TEAL if _direction().dot(Vector2(direction)) > 0.35 and mode == "playing" else MUTED)
 	var knob := center + (stick_offset if not held.is_empty() else Vector2.ZERO)
 	draw_circle(knob + Vector2(0, 4), 46, Color(0, 0, 0, 0.25))
 	draw_circle(knob, 46, Color("294959"))
@@ -586,6 +590,8 @@ func _text_center(point: Vector2, value: String, size: int, color: Color) -> voi
 	_text(point-Vector2(width/2,0),value,size,color)
 
 func _on_exploded(cells: Array) -> void:
+	if foreground and mode == "playing" and local_actor_id < arena.actors.size():
+		haptics.explosion(arena.actors[local_actor_id].position, cells)
 	shake = 3.0
 	sound.play_effect("boom")
 	for cell in cells:
@@ -726,6 +732,6 @@ func _process_online(delta: float) -> void:
 	input_elapsed += delta
 	if input_elapsed >= 0.05:
 		input_elapsed = 0.0
-		var direction := _direction() if mode == "playing" and foreground and countdown <= 0.0 else Vector2i.ZERO
+		var direction := _direction() if mode == "playing" and foreground and countdown <= 0.0 else Vector2.ZERO
 		network.send_message({"type":"input","direction":[direction.x,direction.y],"bomb":false})
 	queue_redraw()

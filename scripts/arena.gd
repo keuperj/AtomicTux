@@ -127,52 +127,55 @@ func _touch_actor(actor: Dictionary) -> void:
 		pickups.erase(target)
 		collected.emit(actor.id, kind)
 
-func move_actor(id: int, direction: Vector2i, delta: float = 1.0 / 60.0) -> bool:
-	if finished or not DIRECTIONS.has(direction) or delta <= 0.0:
+func move_actor(id: int, direction: Vector2, delta: float = 1.0 / 60.0) -> bool:
+	if finished or not direction.is_finite() or direction.is_zero_approx() or delta <= 0.0:
 		return false
 	var actor: Dictionary = actors[id]
 	if not actor.alive: return false
 	_update_bomb_passers()
+	var input := direction.limit_length(1.0)
+	var travel := input.normalized()
+	var distance: float = delta / actor.move_time * input.length()
+	actor.facing = Vector2i(int(signf(travel.x)), 0) if absf(travel.x) > absf(travel.y) else Vector2i(0, int(signf(travel.y)))
 	var moved := false
-	var distance: float = delta / actor.move_time
-	# Small swept steps prevent tunnelling through walls, bombs, actors or fire.
+	# Sweep short steps, sliding each component separately along obstacles.
+	# A blocked component is lost; it never boosts the other component's speed.
 	while distance > 0.000001 and actor.alive:
 		var step := minf(MOTION_STEP, distance)
-		var travel := Vector2(direction)
-		var point: Vector2 = actor.position
-		# Centerline assistance makes perpendicular turns smooth, without snapping.
-		var axis := 1 if direction.x != 0 else 0
-		var alignment := roundf(point[axis]) - point[axis]
-		if absf(alignment) > 0.00001:
-			travel = Vector2.ZERO
-			travel[axis] = signf(alignment)
-			step = minf(step, absf(alignment))
-		var target := point + travel * step
-		for index in bombs.size():
-			var bomb: Dictionary = bombs[index]
-			if actor.kick and not bomb.get("passers", []).has(id) and _overlaps(target, Vector2(bomb.cell), ACTOR_RADIUS + BOMB_RADIUS):
-				_kick_bomb(index, Vector2i(travel))
-		var blocked := not _can_occupy(id, target)
-		if blocked:
-			var low := 0.0
-			var high := step
-			for iteration in 12:
-				var middle := (low + high) / 2.0
-				if _can_occupy(id, point + travel * middle): low = middle
-				else: high = middle
-			if low < 0.000001: break
-			step = low
-			target = point + travel * step
-		actor.previous = actor.cell
-		actor.position = target
-		actor.cell = Vector2i(target.round())
-		actor.facing = Vector2i(travel)
-		distance -= step
+		var moved_x := _move_axis(id, 0, travel.x * step)
+		var moved_y := _move_axis(id, 1, travel.y * step) if actor.alive else false
+		if not moved_x and not moved_y: break
 		moved = true
-		_update_bomb_passers()
-		_touch_actor(actor)
-		if blocked: break
+		distance -= step
 	return moved
+
+func _move_axis(id: int, axis: int, amount: float) -> bool:
+	if absf(amount) < 0.000001: return false
+	var actor: Dictionary = actors[id]
+	var point: Vector2 = actor.position
+	var travel := Vector2.ZERO
+	travel[axis] = signf(amount)
+	var step := absf(amount)
+	var target := point + travel * step
+	for index in bombs.size():
+		var bomb: Dictionary = bombs[index]
+		if actor.kick and not bomb.get("passers", []).has(id) and _overlaps(target, Vector2(bomb.cell), ACTOR_RADIUS + BOMB_RADIUS):
+			_kick_bomb(index, Vector2i(travel))
+	if not _can_occupy(id, target):
+		var low := 0.0
+		var high := step
+		for iteration in 12:
+			var middle := (low + high) / 2.0
+			if _can_occupy(id, point + travel * middle): low = middle
+			else: high = middle
+		if low < 0.000001: return false
+		target = point + travel * low
+	actor.previous = actor.cell
+	actor.position = target
+	actor.cell = Vector2i(target.round())
+	_update_bomb_passers()
+	_touch_actor(actor)
+	return true
 
 func place_bomb(id: int) -> bool:
 	var actor: Dictionary = actors[id]

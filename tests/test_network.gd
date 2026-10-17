@@ -75,15 +75,22 @@ func run() -> void:
 	check(game.arena.actors[1].display_position.is_equal_approx(Vector2(10.85,9)), "Online rendering interpolates between snapshots")
 	game._process_online(.025)
 	check(game.arena.actors[1].display_position.is_equal_approx(Vector2(10.7,9)), "Interpolation reaches the snapshot without tile snapping")
+	var pulses: Array = []
+	game.haptics.pulse_requested.connect(func(duration, strength): pulses.append([duration,strength]))
+	var explosion: Dictionary = motion.duplicate(true)
+	explosion.events = [{"type":"explosion", "cells":[[11,9]]}]
+	game._network_message(explosion)
+	check(pulses.size() == 1, "Nearby online explosion triggers haptic feedback")
 	var deadline := Time.get_ticks_msec()+10000
 	while Time.get_ticks_msec() < deadline:
-		first.send_message({"type":"input","direction":[1,0],"bomb":false})
+		first.send_message({"type":"input","direction":[0.5,0.8660254],"bomb":false})
 		second.send_message({"type":"input","direction":[-1,0],"bomb":false})
 		if messages[0].has("snapshot") and bool(messages[0].snapshot.state.finished): break
 		await create_timer(.05).timeout
 	check(messages[0].has("snapshot") and bool(messages[0].snapshot.state.finished),"Server round completes")
 	check(float(messages[0].snapshot.state.elapsed) > 0,"Authoritative match ticks")
 	check(messages[0].snapshot.state.actors[0].cell != [1,1],"Server applies held movement")
+	check(float(messages[0].snapshot.state.actors[0].position[1]) > 1.1, "Server applies the vertical component of analog input")
 	var final_state: Dictionary = messages[1].snapshot
 	game._network_message(final_state)
 	if game.mode == "dying": game._process_online(2.1)

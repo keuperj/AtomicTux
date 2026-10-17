@@ -29,15 +29,25 @@ Command line: `godot --path .`
 
 Touch the right joystick, then keep your finger down and slide to steer. Movement
 continues while held, even when your finger slides beyond the ring. Return to the
-center to stop temporarily or lift to release. Movement follows the arena's four
-grid directions. Another finger can drop bombs with the left button simultaneously.
+center to stop temporarily or lift to release. Steering follows the exact angle:
+12 o'clock moves up, 3 moves right, and 1 or 2 splits movement proportionally
+between up and right. The same applies around the entire circle. Diagonals share
+one speed budget, so they are no faster than straight movement. Another finger
+can drop bombs with the left button simultaneously. Keyboard directions can also
+be combined for diagonal movement.
 All contestants move continuously, including AI and online players. Releasing
 the joystick stops your Tux between tile centers; reversing direction responds
-immediately. Turns gently align with corridor centers. Walls, crates, bombs,
+immediately. Steering does not snap to corridor centers. Walls, crates, bombs,
 other players, and flames collide with the Tux's body at its actual position.
 Bombs still occupy tiles and are placed on the nearest tile.
 The joystick has a larger ring and touch area for small phone screens.
 The game pauses when backgrounded and clears held touches.
+
+Nearby explosions trigger a short vibration on supported phones and tablets.
+Feedback scales with distance to the nearest blast tile (within three tiles),
+with stronger pulses for closer blasts. Chain reactions are rate limited;
+backgrounded games and spectators do not vibrate. Android exports include the
+VIBRATE permission. Unsupported devices simply play without haptic feedback.
 
 The landscape layout fills phone and tablet aspect ratios without stretching
 the artwork. The arena scales to the available space, controls anchor near the
@@ -162,6 +172,8 @@ godot --headless --path . --script tests/test_ui.gd
 ./godot.sh --headless --script tests/test_mobile.gd
 # Fractional movement, stopping, turns, swept collisions, and AI waypoints.
 ./godot.sh --headless --script tests/test_motion.gd
+# Clock-angle steering, diagonal speed/collisions, and explosion haptic requests.
+./godot.sh --headless --script tests/test_analog.gd
 # Capture desktop-rendered phone/tablet previews and WAV sound samples in builds/.
 ./godot.sh --script tests/test_mobile.gd
 # Run UI tests with rendering; saves builds/menu.png and builds/arena.png.

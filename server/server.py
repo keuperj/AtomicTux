@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run: python3 -m server.server --host 0.0.0.0 --port 8081."""
 import argparse
+import math
 import asyncio
 import contextlib
 import hashlib
@@ -191,10 +192,10 @@ class GameServer:
         elif kind == 'input':
             if not c.room or c.room.state != 'playing': return
             direction = msg.get('direction')
-            if not isinstance(direction,list) or len(direction)!=2 or any(type(v) is not int for v in direction):
+            if not isinstance(direction,list) or len(direction)!=2 or any(type(v) not in (int,float) or not math.isfinite(v) or abs(v) > 1 for v in direction):
                 raise ValueError('Invalid movement input.')
-            direction = tuple(direction)
-            if direction not in DIRS and direction != (0,0): raise ValueError('Invalid movement input.')
+            magnitude = max(1., math.hypot(*direction))
+            direction = tuple(v/magnitude for v in direction)
             if type(msg.get('bomb',False)) is not bool: raise ValueError('Invalid bomb input.')
             c.direction, c.input_time = direction, time.monotonic()
             c.bomb = c.bomb or msg.get('bomb',False)

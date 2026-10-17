@@ -299,6 +299,14 @@ The client interpolates those positions across the 50 ms snapshot interval.
 Update and restart the Python server along with updated clients to use these
 movement rules online; restarting ends active rooms.
 
+Movement intents now carry two finite numeric components in `direction`, each
+between -1 and 1. The server normalizes vectors longer than one to enforce a
+single speed budget; fractional and diagonal inputs retain their proportions.
+Invalid numbers, booleans, and out-of-range components are rejected. Update the
+server before using analog steering in new clients. Nearby explosion events also
+trigger distance-scaled handheld vibration on supported clients; the server does
+not control device vibration directly.
+
 Client prediction/rollback is
 not implemented, so high-latency connections will feel less responsive than LAN.
 Room state is in memory and is lost if the server restarts.

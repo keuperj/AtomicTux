@@ -85,44 +85,52 @@ class Match:
 
     def move(self, actor_id, direction, dt=1/60):
         a = self.actors[actor_id]
-        if self.finished or not a['alive'] or direction not in DIRS or dt <= 0:
+        if self.finished or not a['alive'] or dt <= 0 or not all(math.isfinite(v) for v in direction):
             return False
+        magnitude = math.hypot(*direction)
+        if magnitude < .000001: return False
+        travel = tuple(v/magnitude for v in direction)
         self.update_passers()
-        distance, moved = dt / a['move_time'], False
+        distance, moved = dt / a['move_time'] * min(1., magnitude), False
+        axis = 0 if abs(travel[0]) > abs(travel[1]) else 1
+        facing = [0,0]
+        facing[axis] = 1 if travel[axis] > 0 else -1
+        a['facing'] = tuple(facing)
         while distance > .000001 and a['alive']:
-            step, travel = min(MOTION_STEP, distance), direction
-            point = a['position']
-            axis = 1 if direction[0] else 0
-            alignment = math.floor(point[axis]+.5) - point[axis]
-            if abs(alignment) > .00001:
-                travel = [0,0]
-                travel[axis] = 1 if alignment > 0 else -1
-                travel = tuple(travel)
-                step = min(step, abs(alignment))
-            target = add(point, travel, step)
-            for b in self.bombs:
-                if a['kick'] and actor_id not in b.get('passers', []) and overlaps(target, b['cell'], ACTOR_RADIUS+BOMB_RADIUS):
-                    dest = add(b['cell'], travel)
-                    if not self.bomb_blocked(dest):
-                        b.update(cell=dest, direction=travel, motion_time=0., passers=[])
-                        if dest in self.flames: b['fuse'] = 0.
-            blocked = not self.can_occupy(actor_id, target)
-            if blocked:
-                low, high = 0., step
-                for _ in range(12):
-                    middle = (low+high)/2
-                    if self.can_occupy(actor_id, add(point, travel, middle)): low = middle
-                    else: high = middle
-                if low < .000001: break
-                step = low
-                target = add(point, travel, step)
-            a.update(previous=a['cell'], position=target, cell=cell_at(target), facing=travel)
-            distance -= step
+            step = min(MOTION_STEP, distance)
+            moved_x = self.move_axis(actor_id, 0, travel[0]*step)
+            moved_y = self.move_axis(actor_id, 1, travel[1]*step) if a['alive'] else False
+            if not moved_x and not moved_y: break
             moved = True
-            self.update_passers()
-            self.touch_actor(a)
-            if blocked: break
+            distance -= step
         return moved
+
+    def move_axis(self, actor_id, axis, amount):
+        if abs(amount) < .000001: return False
+        a = self.actors[actor_id]
+        point, step = a['position'], abs(amount)
+        travel = [0,0]
+        travel[axis] = 1 if amount > 0 else -1
+        travel = tuple(travel)
+        target = add(point, travel, step)
+        for b in self.bombs:
+            if a['kick'] and actor_id not in b.get('passers', []) and overlaps(target, b['cell'], ACTOR_RADIUS+BOMB_RADIUS):
+                dest = add(b['cell'], travel)
+                if not self.bomb_blocked(dest):
+                    b.update(cell=dest, direction=travel, motion_time=0., passers=[])
+                    if dest in self.flames: b['fuse'] = 0.
+        if not self.can_occupy(actor_id, target):
+            low, high = 0., step
+            for _ in range(12):
+                middle = (low+high)/2
+                if self.can_occupy(actor_id, add(point, travel, middle)): low = middle
+                else: high = middle
+            if low < .000001: return False
+            target = add(point, travel, low)
+        a.update(previous=a['cell'], position=target, cell=cell_at(target))
+        self.update_passers()
+        self.touch_actor(a)
+        return True
 
     def place(self, actor_id):
         a = self.actors[actor_id]
@@ -276,9 +284,7 @@ class Match:
             a['goal'] = None
             self.bot(actor_id, dt)
             return
-        axis = 0 if abs(offset[0]) > abs(offset[1]) else 1
-        direction = [0,0]
-        direction[axis] = 1 if offset[axis] > 0 else -1
+        direction = tuple(v/distance for v in offset)
         used = min(dt, distance * a['move_time'])
         if not self.move(actor_id, tuple(direction), used):
             a['goal'] = None

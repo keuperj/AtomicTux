@@ -35,7 +35,7 @@ class SimulationTests(unittest.TestCase):
         m=self.fresh()
         m.move(0,(-1,0),.17)
         self.assertFalse(m.move(0,(-1,0)))
-        self.assertFalse(m.move(0,(1,1)))
+        self.assertFalse(m.move(0,(float("inf"),0)))
         self.assertTrue(m.place(0))
         self.assertFalse(m.place(0))
         self.assertTrue(m.move(0,(1,0),m.actors[0]['move_time']))
@@ -149,7 +149,7 @@ class SimulationTests(unittest.TestCase):
         m.move(0,(0,1))
         self.assertLessEqual(math.dist(point,m.actors[0]['position']),1/60/.17+.00001)
         for _ in range(10): m.move(0,(0,1))
-        self.assertAlmostEqual(m.actors[0]['position'][0],1)
+        self.assertAlmostEqual(m.actors[0]['position'][0],point[0])
         self.assertGreater(m.actors[0]['position'][1],1.5)
 
     def test_continuous_collisions_and_fire(self):
@@ -173,6 +173,33 @@ class SimulationTests(unittest.TestCase):
         m.move(0,(1,0),.17)
         self.assertFalse(m.actors[0]['alive'])
         self.assertLess(m.actors[0]['position'][0],1.5)
+
+    def test_analog_angles_sliding_and_corners(self):
+        for hour in range(12):
+            m=self.fresh()
+            self.put(m,0,(6,5))
+            angle=hour*math.tau/12
+            direction=(math.sin(angle),-math.cos(angle))
+            m.move(0,direction,.17)
+            displacement=tuple(m.actors[0]['position'][i]-(6,5)[i] for i in (0,1))
+            self.assertAlmostEqual(math.hypot(*displacement),1,places=5)
+            for axis in (0,1): self.assertAlmostEqual(displacement[axis],direction[axis],places=5)
+        m=self.fresh()
+        self.put(m,0,(6,5))
+        m.move(0,(1,1),.17)
+        self.assertAlmostEqual(math.dist(m.actors[0]['position'],(6,5)),1,places=5)
+        m=self.fresh()
+        self.put(m,0,(6,5))
+        for y in range(1,10): m.grid[y][7]=1
+        m.move(0,(.6,.8),.34)
+        self.assertAlmostEqual(m.actors[0]['position'][0],6.22,places=3)
+        self.assertAlmostEqual(m.actors[0]['position'][1],6.6,places=3)
+        m=self.fresh()
+        self.put(m,0,(6,5))
+        m.grid[5][7]=m.grid[6][6]=1
+        m.move(0,(1,1),1.)
+        self.assertLess(m.actors[0]['position'][0],6.221)
+        self.assertLess(m.actors[0]['position'][1],5.221)
 
     def test_continuous_ai_and_snapshot(self):
         m=self.fresh()
@@ -246,8 +273,13 @@ class LobbyTests(unittest.IsolatedAsyncioTestCase):
     async def test_input_validation_and_identity(self):
         r=self.create()
         self.server.command(self.clients[0],dict(type='start'))
-        for direction in ([1,1], [True,0], [99,0], 'right', None):
+        for direction in ([True,0], [99,0], [float('nan'),0], [0,float('inf')], ['1',0], 'right', None):
             with self.assertRaises(ValueError): self.server.command(self.clients[0],dict(type='input',direction=direction))
+        self.server.command(self.clients[0],dict(type='input',direction=[.5,-math.sqrt(.75)]))
+        self.assertAlmostEqual(self.clients[0].direction[0],.5)
+        self.assertAlmostEqual(self.clients[0].direction[1],-math.sqrt(.75))
+        self.server.command(self.clients[0],dict(type='input',direction=[1,1]))
+        self.assertAlmostEqual(math.hypot(*self.clients[0].direction),1)
         self.server.command(self.clients[0],dict(type='input',direction=[1,0],bomb=True,actor=3))
         self.assertEqual(self.clients[0].direction,(1,0))
         self.assertEqual(r.slots[self.clients[0].id],0)

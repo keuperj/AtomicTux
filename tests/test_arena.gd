@@ -38,7 +38,7 @@ func _initialize() -> void:
 	a.move_actor(0,Vector2i.LEFT,a.actors[0].move_time)
 	check(a.actors[0].position.x > 0.5 and not a.move_actor(0,Vector2i.LEFT), "Border collision stops the continuous body")
 	put(a, 0, Vector2i(1,1))
-	check(not a.move_actor(0,Vector2i(1,1),a.actors[0].move_time), "No diagonal movement")
+	check(not a.move_actor(0,Vector2(INF,0),a.actors[0].move_time), "Reject non-finite movement")
 	check(a.move_actor(0,Vector2i.RIGHT,a.actors[0].move_time), "Valid move")
 	check(a.move_actor(0,Vector2i.RIGHT), "Continuous movement has no tile cooldown")
 	a = fresh()

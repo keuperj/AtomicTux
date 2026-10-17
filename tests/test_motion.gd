@@ -39,9 +39,9 @@ func _initialize() -> void:
 	a.move_actor(0, Vector2i.RIGHT, .04)
 	point = a.actors[0].position
 	a.move_actor(0, Vector2i.DOWN)
-	check(a.actors[0].position.distance_to(point) <= 1.0/60.0/.17+.0001, "Turning assistance does not teleport to a lane")
+	check(a.actors[0].position.distance_to(point) <= 1.0/60.0/.17+.0001, "Changing direction does not teleport")
 	for i in 10: a.move_actor(0, Vector2i.DOWN)
-	check(absf(a.actors[0].position.x-1.0) < .0001 and a.actors[0].position.y > 1.5, "Turning smoothly aligns with the new corridor")
+	check(absf(a.actors[0].position.x-point.x) < .0001 and a.actors[0].position.y > 1.5, "Turning preserves the chosen angle without lane snapping")
 	for obstacle in [Arena.WALL, Arena.CRATE]:
 		a = fresh()
 		a.grid[1][3] = obstacle

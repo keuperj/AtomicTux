@@ -31,13 +31,13 @@ func run() -> void:
 	touch.position = game.position + (game._move_center() + Vector2(60,0)) * game.scale
 	touch.pressed = true
 	game._input(touch)
-	check(game._direction() == Vector2i.RIGHT, "Touch joystick works")
+	check(game._direction() == Vector2.RIGHT, "Touch joystick works")
 	var bomb_touch := InputEventScreenTouch.new()
 	bomb_touch.index = 1
 	bomb_touch.position = game.position + game._bomb_center() * game.scale
 	bomb_touch.pressed = true
 	game._input(bomb_touch)
-	check(game.arena.bombs.size() == 1 and game._direction() == Vector2i.RIGHT, "Simultaneous move and bomb touches")
+	check(game.arena.bombs.size() == 1 and game._direction() == Vector2.RIGHT, "Simultaneous move and bomb touches")
 	touch.pressed = false
 	game._input(touch)
 	check(game.held.is_empty(), "Releasing touch stops movement")
