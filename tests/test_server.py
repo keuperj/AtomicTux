@@ -86,6 +86,76 @@ class SimulationTests(unittest.TestCase):
             if enabled: self.assertTrue(found)
             else: self.assertFalse(found)
 
+    def test_connected_random_mazes_and_regeneration(self):
+        from collections import deque
+        from server.simulation import DIRS, add
+        layouts = set()
+        for seed in range(50):
+            m = Match(seed, {0:'Alice'})
+            seen, pending = {(1,1)}, deque([(1,1)])
+            while pending:
+                for d in DIRS:
+                    c = add(pending[0], d)
+                    if m.tile(c) != 1 and c not in seen:
+                        seen.add(c)
+                        pending.append(c)
+                pending.popleft()
+            self.assertTrue(all((x,y) in seen for y in range(11) for x in range(13) if m.tile((x,y)) != 1))
+            self.assertTrue(all(a['cell'] in seen and m.tile(a['cell']) == 0 for a in m.actors))
+            layouts.add(tuple(tuple(c == 1 for c in row) for row in m.grid))
+            self.assertEqual(m.initial_crates, sum(row.count(2) for row in m.grid))
+        self.assertEqual(len(layouts), 50)
+        m = Match(42, {0:'Alice'})
+        for x,y in m.crate_sites: m.grid[y][x] = 0
+        count = lambda: sum(row.count(2) for row in m.grid)
+        m.regenerate_crates(1.99)
+        self.assertEqual(count(), 0)
+        m.regenerate_crates(.02)
+        self.assertEqual(count(), 1)
+        for _ in range(30): m.regenerate_crates(2)
+        self.assertEqual(count(), math.ceil(m.initial_crates*.2))
+        for x,y in m.crate_sites: m.grid[y][x] = 0
+        c = m.crate_sites[0]
+        m.crate_sites, m.initial_crates = [c], 5
+        m.pickups[c] = 'shield'
+        m.regenerate_crates(2)
+        self.assertEqual(m.tile(c),0)
+        m.pickups.clear()
+        m.flames[c] = .5
+        m.regenerate_crates(2)
+        self.assertEqual(m.tile(c),0)
+        m.flames.clear()
+        self.put(m,0,c)
+        m.regenerate_crates(2)
+        self.assertEqual(m.tile(c),0)
+
+        m.actors[0]['cell'] = c
+        m.place(0)
+        self.put(m,0,(1,1))
+        m.regenerate_crates(2)
+        self.assertEqual(m.tile(c),0)
+        m = Match(42, {0:'Alice'})
+        for x,y in m.crate_sites: m.grid[y][x] = 0
+        m.tick(2.01)
+        self.assertEqual(sum(row.count(2) for row in m.grid),1)
+        self.assertEqual(m.snapshot()['grid'], m.grid)
+        m.finished = True
+        m.tick(10)
+        self.assertEqual(sum(row.count(2) for row in m.grid),1)
+
+    def test_noisy_turns_all_directions(self):
+        from server.simulation import DIRS
+        for direction in DIRS:
+            for turn_sign in (-1,1):
+                m = self.fresh()
+                self.put(m,0,(6,5))
+                m.move(0,direction,m.actors[0]['move_time']*.4)
+                turn = (-direction[1]*turn_sign, direction[0]*turn_sign)
+                inp = tuple(turn[i]-direction[i]*.3 for i in (0,1))
+                m.move(0,inp,m.actors[0]['move_time'])
+                expected = tuple((6,5)[i]+direction[i]+turn[i]*.4 for i in (0,1))
+                self.assertLess(math.dist(m.actors[0]['position'],expected),.001)
+
     def test_collision_and_capacity(self):
         m=self.fresh()
         m.move(0,(-1,0),.23)

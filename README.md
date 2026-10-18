@@ -20,6 +20,8 @@ one very good reason to keep moving.
   Stay for a rematch.
 - **Watch the chaos.** Demo mode pits four AI penguins against each other with
   every power-up available.
+- **Find a fresh route.** Every round has a connected random maze. When crates
+  run low, new ones gradually return to keep the arena lively.
 - **Keep your thumbs in the action.** Smooth movement, a large right-hand
   joystick, a left-hand bomb button, and a layout that adapts to phones and tablets.
 - **Feel the close calls.** Nearby explosions trigger vibration on supported

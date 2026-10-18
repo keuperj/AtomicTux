@@ -329,3 +329,16 @@ The server validates ownership, disallows changes during play, clamps amounts to
 0–20, and broadcasts the resulting room. Each match copies its room’s amounts
 into simulation state, which is also included in snapshots. Update and restart
 the server to enable host controls; clients disable these controls on older servers.
+
+## Random mazes and replenishing crates
+
+The server generates a new connected random wall layout for each round. Every
+spawn and crate lies in the same non-wall region, reachable by clearing crates.
+When fewer than 20% of the original crates remain, it regenerates one every two
+seconds on a safe cleared crate site until the rounded-up 20% target is met.
+It avoids players, pickups, bombs, fire, and predicted blasts; if no safe site is
+available, it retries later. Clients receive regenerated crates in grid snapshots.
+
+Update and restart the server with the client to use these rules and the improved
+buffered turns. A disconnected player's replacement AI also uses the current
+slower difficulty speeds. Restarting the server ends its active rooms.

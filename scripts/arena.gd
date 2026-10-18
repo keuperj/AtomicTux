@@ -19,6 +19,7 @@ const KICK_STEP := 0.09
 const ACTOR_RADIUS := 0.28
 const BOMB_RADIUS := 0.30
 const MOTION_STEP := 0.04
+const CRATE_REGEN_INTERVAL := 2.0
 const POWER_UPS := ["bomb", "fire", "speed", "kick", "shield", "atomic"]
 const DROP_WEIGHTS := {"bomb": 10, "fire": 3, "speed": 1, "kick": 3, "shield": 3, "atomic": 2}
 const SOLO_AMOUNTS := {"bomb": 6, "fire": 4, "speed": 2, "kick": 2, "shield": 4, "atomic": 2}
@@ -39,6 +40,9 @@ var difficulty := 1
 var ai_only := false
 var enabled_powerups: Array = POWER_UPS.duplicate()
 var drop_weights: Dictionary = DROP_WEIGHTS.duplicate()
+var initial_crates := 0
+var crate_sites: Array = []
+var regen_elapsed := 0.0
 
 func start(seed_value: int, level: int = 1, opponents: int = 3, powerups: Array = POWER_UPS, demo: bool = false, amounts: Dictionary = {}) -> void:
 	ai_only = demo
@@ -58,23 +62,81 @@ func start(seed_value: int, level: int = 1, opponents: int = 3, powerups: Array 
 	finished = false
 	winner = -2
 	var spawns := [Vector2i(1, 1), Vector2i(11, 9), Vector2i(11, 1), Vector2i(1, 9)]
-	for y in HEIGHT:
-		var row: Array = []
-		for x in WIDTH:
-			var tile := EMPTY
-			if x == 0 or y == 0 or x == WIDTH - 1 or y == HEIGHT - 1 or (x % 2 == 0 and y % 2 == 0):
-				tile = WALL
-			elif rng.randf() < 0.72:
-				tile = CRATE
-			for spawn in spawns:
-				if absi(x - spawn.x) + absi(y - spawn.y) <= 2 and tile != WALL:
-					tile = EMPTY
-			row.append(tile)
-		grid.append(row)
+	_generate_maze(spawns)
+	crate_sites.clear()
+	for y in range(1, HEIGHT - 1):
+		for x in range(1, WIDTH - 1):
+			var cell := Vector2i(x, y)
+			if tile(cell) == EMPTY and not _near_spawn(cell, spawns) and rng.randf() < 0.72:
+				grid[y][x] = CRATE
+				crate_sites.append(cell)
+	initial_crates = crate_sites.size()
+	regen_elapsed = 0.0
 	for id in (4 if ai_only else clampi(opponents, 1, 3) + 1):
 		actors.append({"id": id, "cell": spawns[id], "previous": spawns[id], "position": Vector2(spawns[id]), "goal": null, "alive": true,
 			"cooldown": 0.0, "move_time": 0.23 if id == 0 and not ai_only else [0.57, 0.28, 0.23][level],
 			"capacity": 1, "power": 2, "bombs": 0, "kick": false, "shield": false, "atomic": false, "invulnerable": 0.0, "bomb_cooldown": 0.0, "facing": Vector2i.DOWN})
+
+func _near_spawn(cell: Vector2i, spawns: Array) -> bool:
+	for spawn in spawns:
+		if absi(cell.x - spawn.x) + absi(cell.y - spawn.y) <= 2: return true
+	return false
+
+func _generate_maze(spawns: Array) -> void:
+	var candidates: Array = []
+	for y in HEIGHT:
+		var row: Array = []
+		for x in WIDTH:
+			var border := x == 0 or y == 0 or x == WIDTH - 1 or y == HEIGHT - 1
+			row.append(WALL if border else EMPTY)
+			if not border and not _near_spawn(Vector2i(x,y), spawns): candidates.append(Vector2i(x,y))
+		grid.append(row)
+	var wall_count := 0
+	while not candidates.is_empty() and wall_count < 30:
+		var cell: Vector2i = candidates.pop_at(rng.randi_range(0, candidates.size()-1))
+		grid[cell.y][cell.x] = WALL
+		if _connected_floor_count(Vector2i(1,1)) == (WIDTH-2)*(HEIGHT-2)-wall_count-1:
+			wall_count += 1
+		else:
+			grid[cell.y][cell.x] = EMPTY
+
+func _connected_floor_count(origin: Vector2i) -> int:
+	var visited := {origin: true}
+	var queue: Array = [origin]
+	var index := 0
+	while index < queue.size():
+		var cell: Vector2i = queue[index]
+		index += 1
+		for direction in DIRECTIONS:
+			var next: Vector2i = cell + direction
+			if tile(next) != WALL and not visited.has(next):
+				visited[next] = true
+				queue.append(next)
+	return visited.size()
+
+func _regenerate_crates(delta: float) -> void:
+	var target := ceili(initial_crates * 0.2)
+	var count := 0
+	for row in grid: count += row.count(CRATE)
+	if count >= target:
+		regen_elapsed = 0.0
+		return
+	regen_elapsed += delta
+	if regen_elapsed < CRATE_REGEN_INTERVAL: return
+	regen_elapsed = 0.0
+	var danger := danger_map()
+	var candidates: Array = []
+	for cell in crate_sites:
+		if tile(cell) != EMPTY or pickups.has(cell) or danger.has(cell) or bomb_at(cell) >= 0: continue
+		var nearby := false
+		for actor in actors:
+			if actor.alive and Vector2(cell).distance_to(actor.position) <= 2.0:
+				nearby = true
+				break
+		if not nearby: candidates.append(cell)
+	if not candidates.is_empty():
+		var cell: Vector2i = candidates[rng.randi_range(0, candidates.size()-1)]
+		grid[cell.y][cell.x] = CRATE
 
 func tile(cell: Vector2i) -> int:
 	if cell.x < 0 or cell.y < 0 or cell.x >= WIDTH or cell.y >= HEIGHT:
@@ -160,6 +222,8 @@ func move_actor(id: int, direction: Vector2, delta: float = 1.0 / 60.0) -> bool:
 		if axis >= 0:
 			# Finish the current lane before taking a buffered perpendicular turn.
 			sign_value = signf(input[axis])
+			if absf(input[axis]) < absf(input[1-axis]) * 0.75:
+				sign_value = signf(actor.facing[axis])
 			if sign_value == 0.0: sign_value = signf(actor.facing[axis])
 			if sign_value == 0.0: sign_value = signf(roundf(point[axis]) - point[axis])
 		else:
@@ -356,6 +420,7 @@ func tick(delta: float) -> void:
 	if survivors.size() <= 1 or (not ai_only and not actors[0].alive) or remaining <= 0.0:
 		finished = true
 		winner = survivors[0].id if survivors.size() == 1 else -1
+	if not finished: _regenerate_crates(delta)
 
 func _detonate(index: int) -> void:
 	var bomb: Dictionary = bombs[index]

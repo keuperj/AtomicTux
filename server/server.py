@@ -121,7 +121,7 @@ class GameServer:
             if room.match and slot is not None:
                 room.match.humans.discard(slot)
                 room.match.actors[slot]['name'] += ' (AI)'
-                room.match.actors[slot]['move_time'] = (.42,.21,.17)[room.difficulty]
+                room.match.actors[slot]['move_time'] = (.57,.28,.23)[room.difficulty]
             if not room.members:
                 if room.task and room.task is not asyncio.current_task(): room.task.cancel()
                 self.rooms.pop(room.id, None)

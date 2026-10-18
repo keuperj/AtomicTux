@@ -247,9 +247,11 @@ func _release_pointer(id: int) -> void:
 
 func _pad_direction(point: Vector2) -> Vector2:
 	var offset := point - _move_center()
-	if offset.length() < 20.0:
+	if offset.length() < 14.0:
 		return Vector2.ZERO
-	# Every angle shares the same speed budget (e.g. 1 o'clock = .5, -.866).
+	# A small cardinal cone filters thumb drift without removing diagonal steering.
+	if absf(offset.x) < absf(offset.y) * 0.25: offset.x = 0.0
+	elif absf(offset.y) < absf(offset.x) * 0.25: offset.y = 0.0
 	return offset.normalized()
 
 func _bomb() -> void:

@@ -8,6 +8,7 @@ POWER_UPS = ("bomb", "fire", "speed", "kick", "shield", "atomic")
 DROP_WEIGHTS = (10, 3, 1, 3, 3, 2)
 DEFAULT_AMOUNTS = dict(zip(POWER_UPS, (6, 4, 2, 2, 4, 2)))
 MAX_AMOUNT = 20
+CRATE_REGEN_INTERVAL = 2.0
 ATOMIC_POWER = -1
 FUSE, FIRE_TIME, KICK_STEP, SHIELD_GRACE = 3.2, .65, .09, .75
 ACTOR_RADIUS, BOMB_RADIUS, MOTION_STEP = .28, .30, .04
@@ -33,21 +34,65 @@ class Match:
         self.bombs, self.flames, self.pickups, self.events = [], {}, {}, []
         spawns = [(1, 1), (11, 9), (11, 1), (1, 9)]
         self.grid = []
-        for y in range(11):
-            row = []
-            for x in range(13):
-                wall = x in (0, 12) or y in (0, 10) or (x % 2 == 0 and y % 2 == 0)
-                tile = 1 if wall else (2 if self.rng.random() < .72 else 0)
-                if not wall and any(abs(x-s[0])+abs(y-s[1]) <= 2 for s in spawns):
-                    tile = 0
-                row.append(tile)
-            self.grid.append(row)
+        self.generate_maze(spawns)
+        self.crate_sites = []
+        for y in range(1,10):
+            for x in range(1,12):
+                c = (x,y)
+                if self.tile(c) == 0 and not self.near_spawn(c, spawns) and self.rng.random() < .72:
+                    self.grid[y][x] = 2
+                    self.crate_sites.append(c)
+        self.initial_crates = len(self.crate_sites)
+        self.regen_elapsed = 0.
         self.actors = [dict(id=i, name=players.get(i, ("TUX", "EMBER", "BYTE", "NOVA")[i]),
                             cell=c, previous=c, position=tuple(float(v) for v in c), goal=None, alive=True, cooldown=0.,
                             move_time=.23 if i in players else (.57, .28, .23)[difficulty],
                             capacity=1, power=2, bombs=0, kick=False, shield=False, atomic=False,
                             invulnerable=0., bomb_cooldown=0., facing=(0, 1))
                        for i, c in enumerate(spawns)]
+
+    @staticmethod
+    def near_spawn(c, spawns):
+        return any(abs(c[0]-s[0])+abs(c[1]-s[1]) <= 2 for s in spawns)
+
+    def generate_maze(self, spawns):
+        self.grid = [[1 if x in (0,12) or y in (0,10) else 0 for x in range(13)] for y in range(11)]
+        candidates = [(x,y) for y in range(1,10) for x in range(1,12) if not self.near_spawn((x,y), spawns)]
+        walls = 0
+        while candidates and walls < 30:
+            x,y = candidates.pop(self.rng.randrange(len(candidates)))
+            self.grid[y][x] = 1
+            if self.connected_floor_count((1,1)) == 99-walls-1:
+                walls += 1
+            else:
+                self.grid[y][x] = 0
+
+    def connected_floor_count(self, origin):
+        visited, queue = {origin}, deque([origin])
+        while queue:
+            cell = queue.popleft()
+            for d in DIRS:
+                nxt = add(cell,d)
+                if self.tile(nxt) != 1 and nxt not in visited:
+                    visited.add(nxt)
+                    queue.append(nxt)
+        return len(visited)
+
+    def regenerate_crates(self, dt):
+        target = math.ceil(self.initial_crates*.2)
+        if sum(row.count(2) for row in self.grid) >= target:
+            self.regen_elapsed = 0.
+            return
+        self.regen_elapsed += dt
+        if self.regen_elapsed < CRATE_REGEN_INTERVAL: return
+        self.regen_elapsed = 0.
+        danger = self.danger()
+        candidates = [c for c in self.crate_sites if self.tile(c) == 0 and c not in self.pickups
+                      and c not in danger and self.bomb_at(c) is None
+                      and not any(a['alive'] and math.dist(c,a['position']) <= 2. for a in self.actors)]
+        if candidates:
+            x,y = self.rng.choice(candidates)
+            self.grid[y][x] = 2
 
     def tile(self, c):
         return self.grid[c[1]][c[0]] if 0 <= c[0] < 13 and 0 <= c[1] < 11 else 1
@@ -104,7 +149,9 @@ class Match:
             axis = next((i for i in (0,1) if abs(point[i]-math.floor(point[i]+.5)) > .00001), None)
             sign = lambda v: (v > 0) - (v < 0)
             if axis is not None:
-                sign_value = sign(input_direction[axis]) or sign(a['facing'][axis]) or sign(math.floor(point[axis]+.5)-point[axis])
+                component = input_direction[axis]
+                if abs(component) < abs(input_direction[1-axis])*.75: component = a['facing'][axis]
+                sign_value = sign(component) or sign(a['facing'][axis]) or sign(math.floor(point[axis]+.5)-point[axis])
             else:
                 point = tuple(float(v) for v in cell_at(point))
                 a['position'] = point
@@ -248,6 +295,7 @@ class Match:
         for a in self.actors:
             if a['alive']: self.touch_actor(a)
         self.check_end()
+        if not self.finished: self.regenerate_crates(dt)
 
     def check_end(self):
         alive = [a for a in self.actors if a['alive']]

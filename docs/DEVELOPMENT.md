@@ -9,7 +9,7 @@ Use **Godot 4.6**, standard edition, with the Compatibility renderer. See the
 export templates, signing, and phone installation. All commands here run from
 the project root. Installed tools and generated builds are excluded from Git.
 
-The project currently has one arena theme, up to four contestants, local solo
+The project currently has one arena theme with random connected mazes, up to four contestants, local solo
 play, an AI-only demo, and server-hosted online rooms. Physical Android device
 validation remains outstanding; desktop tests do not establish mobile performance.
 
@@ -164,3 +164,38 @@ the HUD indicates when one is ready. Demo includes this sixth pickup.
 
 Update and restart the Python multiplayer server alongside this client version
 to apply the same balance and atomic-bomb rules online.
+
+## Joystick calibration, maze generation, and crate regeneration
+
+The joystick uses a 14-unit radial dead zone in the logical 1280 × 800 layout.
+Within roughly 14 degrees of a cardinal direction, the smaller component is
+filtered out to tolerate thumb drift. Other angles retain proportional input.
+All directions use the same sensitivity. Between tile centers, a dominant
+perpendicular turn continues toward the next center rather than reversing due
+to a small opposing component; deliberate reversal along the current lane is
+still immediate. Safe-area and viewport scaling apply before input calibration.
+Physical phone/tablet playtesting is still needed to assess the feel on hardware.
+
+Both simulations build a seeded random wall layout, accepting an interior wall
+only if all remaining non-wall cells stay connected. Borders remain solid and
+all four spawn areas retain open escape space. Crates occupy a subset of that
+connected floor: opponents and every crate can be reached by clearing crates;
+permanent walls never isolate a pocket. Godot and Python use their own RNGs;
+multiplayer clients receive the server's map through snapshots.
+
+Each round records its starting crate count and original crate sites. Below
+20% of that count, one crate returns every two seconds until the rounded-up
+20% target is reached. Candidates must be cleared original sites, outside active
+fire and forecast bomb danger, without bombs or pickups, and more than two tiles
+from every living actor. If no safe site exists, regeneration waits and retries.
+It never runs after a round ends. Regenerated crates use the same configured
+pickup amounts as other crates. Online snapshots distribute the new grid.
+
+```sh
+./godot.sh --headless --script tests/test_maze.gd
+.venv/bin/python -m unittest tests.test_server -v
+```
+
+These checks cover connectivity and layout variation across 50 seeds, crate
+thresholds and protected sites, all four noisy turn directions, and touch
+coordinate conversion across phone/tablet aspect ratios.
