@@ -56,7 +56,7 @@ build your own, or run the game on desktop. On desktop, use **WASD / arrow keys*
 to move, **Space** to plant a bomb, and **Esc** to pause.
 
 For online play, choose **Multi Player**, enter your name, and connect to the
-default server at **92.205.18.100:8081** or a server of your own. First-time
+preconfigured default server or a server of your own. First-time
 connections ask you to verify the server's certificate fingerprint.
 
 ## Open source, built with Godot

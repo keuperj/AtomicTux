@@ -124,8 +124,8 @@ Keystores and credentials are excluded from version control.
 
 ## Play online
 
-The default server is **92.205.18.100**, port **8081**. Saved connection settings
-take precedence. The same endpoint supports HTTPS certificate discovery and
+The game includes a preconfigured default server on port **8081**. Saved connection
+settings take precedence. The same endpoint supports HTTPS certificate discovery and
 secure WebSocket gameplay; you enter the IP and port separately in the game.
 
 1. Select **Multi Player** and enter your name, server IP, and port.

@@ -121,8 +121,7 @@ When moving an installation, stop the service and restore both files before
 starting it again. Keep the directory private to the service account and never
 share the private key.
 
-The service listens on all IPv4 interfaces, TCP **8081**. The game's default
-server address remains **92.205.18.100:8081**. Players enter the reachable IP,
+The service listens on all IPv4 interfaces, TCP **8081**. Players enter the server's reachable IP,
 not the bind address `0.0.0.0`. To use another bind address or port, edit the
 `--host` or `--port` value in `builds/atomictux.service`, then run:
 
@@ -187,8 +186,8 @@ If startup fails, inspect `systemctl --user status` and `journalctl --user`:
 ## Connect and play
 
 1. Launch `./godot.sh --game` and choose **Multiplayer**.
-2. Enter your **name**, server **IP**, and **port**. New clients default to
-   **92.205.18.100:8081**; saved addresses take precedence. These settings are saved.
+2. Enter your **name**, server **IP**, and **port**. New clients use a preconfigured
+   default server; saved addresses take precedence. These settings are saved.
    The client uses HTTPS for certificate discovery and WSS for gameplay on that port.
 3. On first connection, compare the displayed certificate fingerprint with the
    one printed in the server terminal, then select **Trust & Connect**.
