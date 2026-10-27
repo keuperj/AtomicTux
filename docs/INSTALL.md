@@ -114,8 +114,7 @@ USB cable, approve the debugging prompt, and run:
 ```
 
 A debug APK has been exported and its signature verified with this local toolchain.
-Physical Android-device testing is still outstanding. Check touch sizing, safe
-areas, performance, audio, networking, and lifecycle behavior before a release.
+The game has also been tested on real Android hardware.
 Keep `tools/config/debug.keystore` to install future debug builds as updates.
 
 The included preset produces a debug APK after toolchain setup. Play Store

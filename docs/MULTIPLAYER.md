@@ -307,9 +307,8 @@ untrusted TLS certificate, verifies saved trust and rejection of changed certifi
 joining, owner-only start, AI filling, authoritative movement, round completion,
 spectating, rematches, and leaving. It removes its temporary server afterward.
 
-The Android preset enables Internet permission. Physical Android-device and
-public-internet testing are still required; desktop loopback tests cannot verify
-mobile lifecycle/network conditions or WAN latency.
+The Android preset enables Internet permission. Public-internet testing is still
+required; desktop loopback tests cannot verify WAN latency.
 
 Reference APIs: [Godot TLSOptions](https://docs.godotengine.org/en/4.6/classes/class_tlsoptions.html),
 [Godot HTTPRequest](https://docs.godotengine.org/en/4.6/classes/class_httprequest.html), and

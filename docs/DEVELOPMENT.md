@@ -10,8 +10,8 @@ export templates, signing, and phone installation. All commands here run from
 the project root. Installed tools and generated builds are excluded from Git.
 
 The project currently has one arena theme with random connected mazes, up to four contestants, local solo
-play, an AI-only demo, and server-hosted online rooms. Physical Android device
-validation remains outstanding; desktop tests do not establish mobile performance.
+play, an AI-only demo, and server-hosted online rooms. The game has been tested
+on real Android hardware.
 
 ## Controls and presentation
 
@@ -174,7 +174,6 @@ All directions use the same sensitivity. Between tile centers, a dominant
 perpendicular turn continues toward the next center rather than reversing due
 to a small opposing component; deliberate reversal along the current lane is
 still immediate. Safe-area and viewport scaling apply before input calibration.
-Physical phone/tablet playtesting is still needed to assess the feel on hardware.
 
 Both simulations build a seeded random wall layout, accepting an interior wall
 only if all remaining non-wall cells stay connected. Borders remain solid and
